@@ -1,6 +1,9 @@
 export default function TabNav({ activeTab, tabs, onChange }) {
   return (
-    <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <div
+      className="grid gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+    >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (

@@ -3,7 +3,12 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { exportGoalsForSync, importGoalsFromSync } from "./database.js";
+import {
+  exportGoalsForSync,
+  exportHabitsForSync,
+  importGoalsFromSync,
+  importHabitsFromSync,
+} from "./database.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GIT_REPO_PATH = "/Users/max/Goals";
@@ -11,6 +16,7 @@ const DEBOUNCE_MS = 5_000;
 
 export const GIT_REPO_PATH = process.env.GIT_REPO_PATH || DEFAULT_GIT_REPO_PATH;
 const goalsJsonPath = resolve(GIT_REPO_PATH, "goals.json");
+const habitsJsonPath = resolve(GIT_REPO_PATH, "habits.json");
 
 let exportTimer = null;
 let exportInFlight = Promise.resolve();
@@ -42,8 +48,8 @@ function assertRepoAvailable() {
   }
 }
 
-async function hasGoalsJsonChanges() {
-  const { stdout } = await runGit(["status", "--porcelain", "--", "goals.json"]);
+async function hasSyncJsonChanges() {
+  const { stdout } = await runGit(["status", "--porcelain", "--", "goals.json", "habits.json"]);
   return stdout.trim().length > 0;
 }
 
@@ -52,10 +58,10 @@ async function branchIsAhead() {
   return stdout.split("\n")[0]?.includes("[ahead");
 }
 
-async function pushGoalsJson() {
-  await runGit(["add", "goals.json"]);
+async function pushSyncJson() {
+  await runGit(["add", "goals.json", "habits.json"]);
 
-  if (await hasGoalsJsonChanges()) {
+  if (await hasSyncJsonChanges()) {
     await runGit(["commit", "-m", "Sync von App"]);
   } else if (!(await branchIsAhead())) {
     return false;
@@ -82,9 +88,11 @@ export async function exportAndPushNow({ throwOnError = true } = {}) {
 
   try {
     assertRepoAvailable();
-    const payload = exportGoalsForSync();
-    await writeFile(goalsJsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-    return { pushed: await pushGoalsJson() };
+    const goalsPayload = exportGoalsForSync();
+    const habitsPayload = exportHabitsForSync();
+    await writeFile(goalsJsonPath, `${JSON.stringify(goalsPayload, null, 2)}\n`, "utf8");
+    await writeFile(habitsJsonPath, `${JSON.stringify(habitsPayload, null, 2)}\n`, "utf8");
+    return { pushed: await pushSyncJson() };
   } catch (error) {
     logGitError("Push fehlgeschlagen", error);
     if (throwOnError) {
@@ -102,17 +110,25 @@ export async function syncFromGitHub() {
     assertRepoAvailable();
     await runGit(["pull"]);
 
-    if (!existsSync(goalsJsonPath)) {
-      return { pulled: 0 };
+    let pulled = 0;
+
+    if (existsSync(goalsJsonPath)) {
+      const raw = await readFile(goalsJsonPath, "utf8");
+      const parsed = JSON.parse(raw);
+      pulled += importGoalsFromSync(parsed);
     }
 
-    const raw = await readFile(goalsJsonPath, "utf8");
-    const parsed = JSON.parse(raw);
-    return { pulled: importGoalsFromSync(parsed) };
+    if (existsSync(habitsJsonPath)) {
+      const raw = await readFile(habitsJsonPath, "utf8");
+      const parsed = JSON.parse(raw);
+      pulled += importHabitsFromSync(parsed);
+    }
+
+    return { pulled };
   } catch (error) {
     logGitError("Pull fehlgeschlagen", error);
     if (error instanceof SyntaxError) {
-      throw new GitSyncError("goals.json konnte nicht gelesen werden - JSON ist ungültig.", error);
+      throw new GitSyncError("goals.json oder habits.json konnte nicht gelesen werden - JSON ist ungültig.", error);
     }
     throw new GitSyncError(
       "Pull fehlgeschlagen - eventuell ist der GitHub-Zugang abgelaufen oder keine Netzwerkverbindung vorhanden.",

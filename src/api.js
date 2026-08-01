@@ -77,4 +77,29 @@ export const api = {
   deleteChecklistItem(id) {
     return request(`/checklist-items/${id}`, { method: "DELETE" });
   },
+  getHabits(month) {
+    const query = month ? `?month=${encodeURIComponent(month)}` : "";
+    return request(`/habits${query}`);
+  },
+  createHabit(habit) {
+    return request("/habits", {
+      method: "POST",
+      body: JSON.stringify(habit),
+    });
+  },
+  updateHabit(id, patch) {
+    return request(`/habits/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    });
+  },
+  deleteHabit(id) {
+    return request(`/habits/${id}`, { method: "DELETE" });
+  },
+  toggleHabitCompletion(id, date) {
+    return request(`/habits/${id}/toggle`, {
+      method: "POST",
+      body: JSON.stringify({ date }),
+    });
+  },
 };

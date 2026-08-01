@@ -33,6 +33,10 @@ function currentPeriodKey(period) {
   return String(now.getFullYear());
 }
 
+function currentMonthKey() {
+  return currentPeriodKey("monthly");
+}
+
 function parseHourFromTime(time) {
   const hour = Number.parseInt(String(time).split(":")[0], 10);
   return Number.isFinite(hour) ? Math.max(0, Math.min(23, hour)) : 0;
@@ -41,6 +45,18 @@ function parseHourFromTime(time) {
 function timeFromHour(hour) {
   const safeHour = Number.isFinite(Number(hour)) ? Math.max(0, Math.min(23, Number(hour))) : 0;
   return `${String(Math.trunc(safeHour)).padStart(2, "0")}:00`;
+}
+
+function isDateKey(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizeTargetPerWeek(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return 7;
+  }
+  return Math.max(1, Math.min(7, Math.trunc(number)));
 }
 
 function isJsonNewer(jsonUpdatedAt, sqliteUpdatedAt) {
@@ -123,19 +139,42 @@ function migrateSchema() {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS habits (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      target_per_week INTEGER NOT NULL DEFAULT 7,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS habit_completions (
+      id TEXT PRIMARY KEY,
+      habit_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE,
+      UNIQUE (habit_id, date)
+    );
   `);
 
   addColumnIfMissing("daily_tasks", "updated_at", "TEXT");
   addColumnIfMissing("goals", "period_key", "TEXT");
   addColumnIfMissing("goals", "updated_at", "TEXT");
   addColumnIfMissing("checklist_items", "updated_at", "TEXT");
+  addColumnIfMissing("habits", "updated_at", "TEXT");
+  addColumnIfMissing("habit_completions", "updated_at", "TEXT");
 
   normalizeMissingTimestamps("daily_tasks");
   normalizeMissingTimestamps("goals");
   normalizeMissingTimestamps("checklist_items");
+  normalizeMissingTimestamps("habits");
+  normalizeMissingTimestamps("habit_completions");
   normalizeTimestampFormat("daily_tasks");
   normalizeTimestampFormat("goals");
   normalizeTimestampFormat("checklist_items");
+  normalizeTimestampFormat("habits");
+  normalizeTimestampFormat("habit_completions");
 
   db.prepare(`
     UPDATE goals
@@ -155,6 +194,12 @@ function migrateSchema() {
 
     CREATE INDEX IF NOT EXISTS checklist_items_goal_id_idx
       ON checklist_items (goal_id, created_at);
+
+    CREATE INDEX IF NOT EXISTS habits_created_at_idx
+      ON habits (created_at);
+
+    CREATE INDEX IF NOT EXISTS habit_completions_habit_date_idx
+      ON habit_completions (habit_id, date);
   `);
 }
 
@@ -176,6 +221,18 @@ const getChecklistItemStatement = db.prepare(`
   SELECT id, goal_id, text, done, updated_at
   FROM checklist_items
   WHERE id = ?
+`);
+
+const getHabitStatement = db.prepare(`
+  SELECT id, name, target_per_week, created_at, updated_at
+  FROM habits
+  WHERE id = ?
+`);
+
+const getHabitCompletionStatement = db.prepare(`
+  SELECT id, habit_id, date, updated_at
+  FROM habit_completions
+  WHERE habit_id = ? AND date = ?
 `);
 
 function mapDailyTask(row) {
@@ -217,9 +274,28 @@ function mapGoal(row) {
   };
 }
 
+function mapHabit(row, completions = []) {
+  return {
+    id: row.id,
+    name: row.name,
+    targetPerWeek: row.target_per_week,
+    completions,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function getGoalById(goalId) {
   const row = getGoalStatement.get(goalId);
   return row ? mapGoal(row) : null;
+}
+
+function getHabitById(habitId) {
+  const row = getHabitStatement.get(habitId);
+  if (!row) {
+    return null;
+  }
+  return mapHabit(row, getAllCompletionDatesForHabit(habitId));
 }
 
 function getChecklistItemById(itemId) {
@@ -232,6 +308,18 @@ function getChecklistItemById(itemId) {
         done: Boolean(row.done),
       }
     : null;
+}
+
+function getAllCompletionDatesForHabit(habitId) {
+  return db
+    .prepare(`
+      SELECT date
+      FROM habit_completions
+      WHERE habit_id = ?
+      ORDER BY date ASC
+    `)
+    .all(habitId)
+    .map((completion) => completion.date);
 }
 
 function seedGoal(period, title, description, checklist) {
@@ -414,6 +502,33 @@ export function exportGoalsForSync() {
   return { daily, monthly, yearly };
 }
 
+export function exportHabitsForSync() {
+  const completionsStatement = db.prepare(`
+    SELECT date
+    FROM habit_completions
+    WHERE habit_id = ?
+    ORDER BY date ASC
+  `);
+
+  const habits = db
+    .prepare(`
+      SELECT id, name, target_per_week, created_at, updated_at
+      FROM habits
+      ORDER BY created_at ASC, id ASC
+    `)
+    .all()
+    .map((habit) => ({
+      id: habit.id,
+      name: habit.name,
+      target_per_week: habit.target_per_week,
+      completions: completionsStatement.all(habit.id).map((completion) => completion.date),
+      created_at: habit.created_at,
+      updated_at: habit.updated_at,
+    }));
+
+  return { habits };
+}
+
 export function importGoalsFromSync(syncData) {
   let pulled = 0;
   const daily = Array.isArray(syncData?.daily) ? syncData.daily : [];
@@ -463,6 +578,66 @@ export function importGoalsFromSync(syncData) {
 
     pulled += importGoalsByPeriod("monthly", monthly);
     pulled += importGoalsByPeriod("yearly", yearly);
+
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return pulled;
+}
+
+export function importHabitsFromSync(syncData) {
+  let pulled = 0;
+  const habits = Array.isArray(syncData?.habits) ? syncData.habits : [];
+
+  db.exec("BEGIN");
+  try {
+    const insertHabit = db.prepare(`
+      INSERT INTO habits (id, name, target_per_week, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const updateHabitFromSync = db.prepare(`
+      UPDATE habits
+      SET name = ?, target_per_week = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    const insertCompletion = db.prepare(`
+      INSERT OR IGNORE INTO habit_completions (id, habit_id, date, updated_at)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    for (const habit of habits) {
+      if (!habit?.id || typeof habit.name !== "string") {
+        continue;
+      }
+
+      const updatedAt = habit.updated_at || nowIso();
+      const createdAt = habit.created_at || updatedAt;
+      const targetPerWeek = normalizeTargetPerWeek(habit.target_per_week);
+      const current = getHabitStatement.get(habit.id);
+
+      if (!current) {
+        insertHabit.run(habit.id, habit.name, targetPerWeek, createdAt, updatedAt);
+        pulled += 1;
+      } else if (isJsonNewer(updatedAt, current.updated_at)) {
+        updateHabitFromSync.run(habit.name, targetPerWeek, updatedAt, habit.id);
+        pulled += 1;
+      }
+
+      const completions = Array.isArray(habit.completions) ? habit.completions : [];
+      for (const date of completions) {
+        if (!isDateKey(date)) {
+          continue;
+        }
+
+        const inserted = insertCompletion.run(randomUUID(), habit.id, date, updatedAt).changes > 0;
+        if (inserted) {
+          pulled += 1;
+        }
+      }
+    }
 
     db.exec("COMMIT");
   } catch (error) {
@@ -549,6 +724,87 @@ function importGoalsByPeriod(period, goals) {
   }
 
   return pulled;
+}
+
+export function listHabits(monthKey = currentMonthKey()) {
+  return {
+    month: monthKey,
+    habits: db
+      .prepare(`
+        SELECT id, name, target_per_week, created_at, updated_at
+        FROM habits
+        ORDER BY created_at DESC, id DESC
+      `)
+      .all()
+      .map((habit) => mapHabit(habit, getAllCompletionDatesForHabit(habit.id))),
+  };
+}
+
+export function createHabit({ name, targetPerWeek }) {
+  const id = randomUUID();
+  const timestamp = nowIso();
+  db.prepare(`
+    INSERT INTO habits (id, name, target_per_week, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, name, normalizeTargetPerWeek(targetPerWeek), timestamp, timestamp);
+  notifyWrite();
+
+  return getHabitById(id);
+}
+
+export function updateHabit(id, patch) {
+  const current = getHabitStatement.get(id);
+  if (!current) {
+    return null;
+  }
+
+  db.prepare(`
+    UPDATE habits
+    SET name = ?, target_per_week = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    patch.name ?? current.name,
+    patch.targetPerWeek === undefined
+      ? current.target_per_week
+      : normalizeTargetPerWeek(patch.targetPerWeek),
+    nowIso(),
+    id
+  );
+  notifyWrite();
+
+  return getHabitById(id);
+}
+
+export function deleteHabit(id) {
+  const deleted = db.prepare("DELETE FROM habits WHERE id = ?").run(id).changes > 0;
+  if (deleted) {
+    notifyWrite();
+  }
+  return deleted;
+}
+
+export function toggleHabitCompletion(habitId, date) {
+  const habit = getHabitStatement.get(habitId);
+  if (!habit || !isDateKey(date)) {
+    return null;
+  }
+
+  const current = getHabitCompletionStatement.get(habitId, date);
+  const timestamp = nowIso();
+
+  if (current) {
+    db.prepare("DELETE FROM habit_completions WHERE id = ?").run(current.id);
+  } else {
+    db.prepare(`
+      INSERT INTO habit_completions (id, habit_id, date, updated_at)
+      VALUES (?, ?, ?, ?)
+    `).run(randomUUID(), habitId, date, timestamp);
+  }
+
+  db.prepare("UPDATE habits SET updated_at = ? WHERE id = ?").run(timestamp, habitId);
+  notifyWrite();
+
+  return getHabitById(habitId);
 }
 
 export function createDailyTask({ dateKey, time, text }) {

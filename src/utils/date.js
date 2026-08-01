@@ -22,6 +22,16 @@ export function addDays(date, amount) {
   return next;
 }
 
+export function addMonths(date, amount) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+export function toMonthKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
 export function formatWeekday(date) {
   return weekdayFormatter.format(date);
 }

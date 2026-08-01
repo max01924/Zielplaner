@@ -6,15 +6,20 @@ import {
   createChecklistItem,
   createDailyTask,
   createGoal,
+  createHabit,
   deleteChecklistItem,
   deleteDailyTask,
   deleteGoal,
+  deleteHabit,
   getDatabasePath,
   getState,
+  listHabits,
   setDatabaseWriteListener,
+  toggleHabitCompletion,
   updateChecklistItem,
   updateDailyTask,
   updateGoal,
+  updateHabit,
 } from "./database.js";
 import { GIT_REPO_PATH, runManualSync, scheduleExportToGit, syncFromGitHub } from "./git-sync.js";
 
@@ -45,6 +50,41 @@ function boolField(value, fieldName) {
     throw error;
   }
   return value;
+}
+
+function targetPerWeekField(value, fieldName = "targetPerWeek") {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1 || number > 7) {
+    const error = new Error(`${fieldName} muss eine Zahl zwischen 1 und 7 sein.`);
+    error.status = 400;
+    throw error;
+  }
+  return number;
+}
+
+function dateKeyField(value, fieldName = "date") {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const error = new Error(`${fieldName} muss im Format YYYY-MM-DD sein.`);
+    error.status = 400;
+    throw error;
+  }
+  return value;
+}
+
+function monthKeyField(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !/^\d{4}-\d{2}$/.test(value)) {
+    const error = new Error("month muss im Format YYYY-MM sein.");
+    error.status = 400;
+    throw error;
+  }
+  return value;
+}
+
+function habitTargetFromBody(body) {
+  return body.targetPerWeek ?? body.target_per_week;
 }
 
 function validatePeriod(period) {
@@ -80,6 +120,52 @@ app.get("/api/state", (_request, response) => {
 
 app.post("/api/sync", asyncRoute(async (_request, response) => {
   response.json(await runManualSync());
+}));
+
+app.get("/api/habits", asyncRoute((request, response) => {
+  response.json(listHabits(monthKeyField(request.query.month)));
+}));
+
+app.post("/api/habits", asyncRoute((request, response) => {
+  const habit = createHabit({
+    name: stringField(request.body.name, "name"),
+    targetPerWeek: targetPerWeekField(habitTargetFromBody(request.body)),
+  });
+  response.status(201).json(habit);
+}));
+
+app.put("/api/habits/:id", asyncRoute((request, response) => {
+  const patch = {};
+  if ("name" in request.body) {
+    patch.name = stringField(request.body.name, "name");
+  }
+  if ("targetPerWeek" in request.body || "target_per_week" in request.body) {
+    patch.targetPerWeek = targetPerWeekField(habitTargetFromBody(request.body));
+  }
+
+  const habit = updateHabit(request.params.id, patch);
+  if (!habit) {
+    sendNotFound(response);
+    return;
+  }
+  response.json(habit);
+}));
+
+app.delete("/api/habits/:id", (request, response) => {
+  if (!deleteHabit(request.params.id)) {
+    sendNotFound(response);
+    return;
+  }
+  response.status(204).end();
+});
+
+app.post("/api/habits/:id/toggle", asyncRoute((request, response) => {
+  const habit = toggleHabitCompletion(request.params.id, dateKeyField(request.body.date));
+  if (!habit) {
+    sendNotFound(response);
+    return;
+  }
+  response.json(habit);
 }));
 
 app.post("/api/daily-tasks", asyncRoute((request, response) => {
