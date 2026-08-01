@@ -3,15 +3,18 @@ import { resolve } from "node:path";
 
 const rootDir = resolve(import.meta.dirname, "..");
 const viteBin = resolve(rootDir, "node_modules", ".bin", "vite");
+const apiPort = process.env.API_PORT || process.env.PORT || "5174";
+const clientPort = process.env.CLIENT_PORT || "5173";
 
 const children = [
   spawn(process.execPath, ["server/index.js"], {
     cwd: rootDir,
-    env: { ...process.env, PORT: "5174" },
+    env: { ...process.env, PORT: apiPort },
     stdio: "inherit",
   }),
-  spawn(viteBin, ["--host", "127.0.0.1", "--port", "5173"], {
+  spawn(viteBin, ["--host", "127.0.0.1", "--port", clientPort], {
     cwd: rootDir,
+    env: { ...process.env, API_PORT: apiPort },
     stdio: "inherit",
   }),
 ];

@@ -360,7 +360,7 @@ export function exportGoalsForSync() {
     .map((task) => ({
       id: task.id,
       date: task.date_key,
-      hour: parseHourFromTime(task.time),
+      time: task.time,
       text: task.text,
       done: Boolean(task.done),
       updated_at: task.updated_at,
@@ -368,7 +368,7 @@ export function exportGoalsForSync() {
 
   const goals = db
     .prepare(`
-      SELECT id, period, period_key, title, updated_at
+      SELECT id, period, period_key, title, description, updated_at
       FROM goals
       ORDER BY period ASC, period_key ASC, created_at ASC
     `)
@@ -388,6 +388,7 @@ export function exportGoalsForSync() {
     const sharedGoal = {
       id: goal.id,
       title: goal.title,
+      description: goal.description ?? "",
       subtasks: subtasksStatement.all(goal.id).map((item) => ({
         id: item.id,
         text: item.text,
@@ -439,7 +440,17 @@ export function importGoalsFromSync(syncData) {
       const current = getDailyTaskStatement.get(task.id);
       const updatedAt = task.updated_at || nowIso();
       const done = task.done ? 1 : 0;
-      const time = timeFromHour(task.hour);
+      let time = "00:00";
+
+      if (typeof task.time === "string") {
+        if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(task.time)) {
+          time = task.time;
+        } else {
+          console.warn(`Ungueltiger time-Wert in goals.json fuer daily task ${task.id}: ${task.time}`);
+        }
+      } else if (task.hour !== undefined && task.hour !== null) {
+        time = timeFromHour(task.hour);
+      }
 
       if (!current) {
         insertDaily.run(task.id, task.date, time, task.text, done, updatedAt, updatedAt);
@@ -466,11 +477,11 @@ function importGoalsByPeriod(period, goals) {
   let pulled = 0;
   const insertGoal = db.prepare(`
     INSERT INTO goals (id, period, period_key, title, description, created_at, updated_at)
-    VALUES (?, ?, ?, ?, '', ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   const updateGoalFromSync = db.prepare(`
     UPDATE goals
-    SET period = ?, period_key = ?, title = ?, updated_at = ?
+    SET period = ?, period_key = ?, title = ?, description = ?, updated_at = ?
     WHERE id = ?
   `);
   const insertItem = db.prepare(`
@@ -491,12 +502,29 @@ function importGoalsByPeriod(period, goals) {
     const periodKey = period === "monthly" ? goal.month : goal.year;
     const updatedAt = goal.updated_at || nowIso();
     const current = getGoalStatement.get(goal.id);
+    const description =
+      typeof goal.description === "string" ? goal.description : current?.description ?? "";
 
     if (!current) {
-      insertGoal.run(goal.id, period, periodKey || currentPeriodKey(period), goal.title, updatedAt, updatedAt);
+      insertGoal.run(
+        goal.id,
+        period,
+        periodKey || currentPeriodKey(period),
+        goal.title,
+        description,
+        updatedAt,
+        updatedAt
+      );
       pulled += 1;
     } else if (isJsonNewer(updatedAt, current.updated_at)) {
-      updateGoalFromSync.run(period, periodKey || current.period_key || currentPeriodKey(period), goal.title, updatedAt, goal.id);
+      updateGoalFromSync.run(
+        period,
+        periodKey || current.period_key || currentPeriodKey(period),
+        goal.title,
+        description,
+        updatedAt,
+        goal.id
+      );
       pulled += 1;
     }
 
