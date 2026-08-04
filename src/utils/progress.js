@@ -14,29 +14,13 @@ export function checklistProgress(items) {
 }
 
 export function progressTone(percent) {
-  if (percent < 33) {
-    return {
-      label: "Niedrig",
-      bar: "bg-red-500",
-      text: "text-red-700",
-      soft: "bg-red-50",
-      border: "border-red-200",
-    };
-  }
-  if (percent <= 66) {
-    return {
-      label: "Mittel",
-      bar: "bg-amber-400",
-      text: "text-amber-700",
-      soft: "bg-amber-50",
-      border: "border-amber-200",
-    };
-  }
+  const label = percent < 33 ? "Niedrig" : percent <= 66 ? "Mittel" : "Hoch";
+
   return {
-    label: "Hoch",
-    bar: "bg-emerald-500",
-    text: "text-emerald-700",
-    soft: "bg-emerald-50",
-    border: "border-emerald-200",
+    label,
+    bar: "bg-accent",
+    text: "text-ink",
+    soft: "bg-depth-panel",
+    border: "",
   };
 }

@@ -1,31 +1,41 @@
-import { Check, Pencil, Save, Trash2, X } from "lucide-react";
+import { Check, Link2, Pencil, Save, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import ParentSelect from "./ParentSelect.jsx";
+import TimeInput from "./TimeInput.jsx";
 
-export default function HourSlot({ task, onToggle, onUpdate, onDelete }) {
+export default function HourSlot({ task, priorities, parent, onNavigateParent, onToggle, onToggleFocus, onUpdate, onDelete }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTime, setDraftTime] = useState(task.time);
   const [draftText, setDraftText] = useState(task.text);
+  const [draftPriorityId, setDraftPriorityId] = useState(task.weeklyPriorityId);
 
   function save() {
     const text = draftText.trim();
     if (!text) {
       return;
     }
-    onUpdate({ ...task, time: draftTime, text });
+    onUpdate({ ...task, time: draftTime, text, weeklyPriorityId: draftPriorityId });
     setIsEditing(false);
   }
 
   return (
-    <li className="relative grid gap-3 border-l-2 border-sky-200 pb-4 pl-5 last:pb-0 dark:border-sky-900 sm:grid-cols-[88px_1fr] sm:gap-5">
-      <span className="absolute -left-[7px] top-2 h-3 w-3 rounded-full border-2 border-white bg-sky-500 shadow dark:border-slate-950" />
-      <time className="text-sm font-black text-slate-950 dark:text-sky-100">{task.time}</time>
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex items-start gap-3">
+    <li className="relative grid gap-3 border-l border-line pb-4 pl-5 last:pb-0 sm:grid-cols-[72px_1fr] sm:gap-4">
+      <span className="absolute -left-[5px] top-3 h-2.5 w-2.5 rounded-full bg-accent shadow-card" />
+      <time className="pt-1 text-xs font-black uppercase text-ink">{task.time}</time>
+      <div className={`bg-depth-panel relative overflow-hidden rounded-2xl p-4 shadow-card transition hover:brightness-110 sm:p-5 ${
+        task.isDailyFocus ? "daily-focus-glow" : ""
+      }`}>
+        {task.isDailyFocus ? (
+          <span className="absolute inset-y-4 left-0 z-20 w-1 rounded-r-full bg-accent" aria-hidden="true" />
+        ) : null}
+        <div className="relative z-10 flex items-start gap-3">
           <button
             type="button"
             onClick={onToggle}
-            className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded border ${
-              task.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900"
+            className={`grid h-6 w-6 shrink-0 self-center place-items-center rounded-lg transition ${
+              task.done
+                ? "bg-accent text-ink"
+                : "bg-canvas-deep text-transparent hover:bg-surface-hover"
             }`}
             aria-label={task.done ? "Aufgabe als offen markieren" : "Aufgabe abhaken"}
           >
@@ -34,12 +44,11 @@ export default function HourSlot({ task, onToggle, onUpdate, onDelete }) {
 
           <div className="min-w-0 flex-1">
             {isEditing ? (
-              <div className="grid gap-2 sm:grid-cols-[128px_1fr]">
-                <input
-                  type="time"
+              <div className="grid gap-3 sm:grid-cols-[128px_1fr]">
+                <TimeInput
                   value={draftTime}
-                  onChange={(event) => setDraftTime(event.target.value)}
-                  className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  onValueChange={setDraftTime}
+                  className="bg-depth-control min-h-10 rounded-xl px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
                 />
                 <input
                   value={draftText}
@@ -48,24 +57,47 @@ export default function HourSlot({ task, onToggle, onUpdate, onDelete }) {
                     if (event.key === "Enter") save();
                     if (event.key === "Escape") setIsEditing(false);
                   }}
-                  className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  className="bg-depth-control min-h-10 rounded-xl px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
                   autoFocus
                 />
+                <div className="sm:col-span-2">
+                  <ParentSelect value={draftPriorityId} onChange={setDraftPriorityId} options={priorities} label="Wochenpriorität" />
+                </div>
               </div>
             ) : (
-              <p className={`text-sm ${task.done ? "text-slate-400 line-through dark:text-slate-500" : "text-slate-800 dark:text-slate-100"}`}>
-                {task.text}
-              </p>
+              <>
+                <p className={`text-sm leading-relaxed ${task.done ? "text-subtle line-through" : "font-medium text-ink"}`}>{task.text}</p>
+                {parent ? (
+                  <button type="button" onClick={() => onNavigateParent(parent)} className="mt-2 inline-flex items-center gap-2 text-[10px] font-bold uppercase text-muted hover:text-ink">
+                    <Link2 className="h-3.5 w-3.5 text-accent" />
+                    {parent.text}
+                  </button>
+                ) : null}
+              </>
             )}
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={onToggleFocus}
+                className={`grid h-9 w-9 place-items-center rounded-lg transition hover:bg-surface hover:text-ink ${
+                  task.isDailyFocus ? "text-accent" : "text-subtle"
+                }`}
+                aria-label={task.isDailyFocus ? "Tagesfokus entfernen" : "Als Tagesfokus markieren"}
+                title={task.isDailyFocus ? "Tagesfokus entfernen" : "Als Tagesfokus markieren"}
+                aria-pressed={task.isDailyFocus}
+              >
+                <Star className={`h-4 w-4 ${task.isDailyFocus ? "fill-current" : ""}`} />
+              </button>
+            ) : null}
             {isEditing ? (
               <>
                 <button
                   type="button"
                   onClick={save}
-                  className="grid h-9 w-9 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  className="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-surface hover:text-ink"
                   aria-label="Aufgabe speichern"
                 >
                   <Save className="h-4 w-4" />
@@ -75,9 +107,10 @@ export default function HourSlot({ task, onToggle, onUpdate, onDelete }) {
                   onClick={() => {
                     setDraftTime(task.time);
                     setDraftText(task.text);
+                    setDraftPriorityId(task.weeklyPriorityId);
                     setIsEditing(false);
                   }}
-                  className="grid h-9 w-9 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  className="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-surface hover:text-ink"
                   aria-label="Bearbeitung abbrechen"
                 >
                   <X className="h-4 w-4" />
@@ -87,7 +120,7 @@ export default function HourSlot({ task, onToggle, onUpdate, onDelete }) {
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}
-                className="grid h-9 w-9 place-items-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-surface hover:text-ink"
                 aria-label="Aufgabe bearbeiten"
               >
                 <Pencil className="h-4 w-4" />
@@ -96,7 +129,7 @@ export default function HourSlot({ task, onToggle, onUpdate, onDelete }) {
             <button
               type="button"
               onClick={onDelete}
-              className="grid h-9 w-9 place-items-center rounded-md text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+              className="grid h-9 w-9 place-items-center rounded-lg text-subtle transition hover:bg-surface hover:text-ink"
               aria-label="Aufgabe löschen"
             >
               <Trash2 className="h-4 w-4" />

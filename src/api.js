@@ -1,11 +1,21 @@
 async function request(path, options = {}) {
-  const response = await fetch(`/api${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers ?? {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`/api${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Verbindung zum Server fehlgeschlagen. Prüfe, ob der Zielplaner läuft, und lade die Seite neu."
+      );
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     let message = "Anfrage fehlgeschlagen.";
@@ -29,8 +39,44 @@ export const api = {
   getState() {
     return request("/state");
   },
+  getWeek(weekKey) {
+    return request(`/weeks/${weekKey}`);
+  },
+  createWeeklyPriority(weekKey, priority) {
+    return request(`/weeks/${weekKey}/priorities`, {
+      method: "POST",
+      body: JSON.stringify(priority),
+    });
+  },
+  updateWeeklyPriority(id, patch) {
+    return request(`/weekly-priorities/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+  },
+  deleteWeeklyPriority(id) {
+    return request(`/weekly-priorities/${id}`, { method: "DELETE" });
+  },
+  updateWeeklyReflection(weekKey, reflection) {
+    return request(`/weeks/${weekKey}/reflection`, {
+      method: "PUT",
+      body: JSON.stringify({ reflection }),
+    });
+  },
+  saveWeeklyReview(weekKey, review) {
+    return request(`/weeks/${weekKey}/review`, {
+      method: "PUT",
+      body: JSON.stringify(review),
+    });
+  },
   sync() {
     return request("/sync", { method: "POST" });
+  },
+  saveDailyReview(dateKey, review) {
+    return request(`/daily-reviews/${dateKey}`, {
+      method: "PUT",
+      body: JSON.stringify(review),
+    });
   },
   createDailyTask(task) {
     return request("/daily-tasks", {

@@ -1,49 +1,49 @@
-import { toDateKey } from "../utils/date.js";
 import { clampPercent } from "../utils/progress.js";
 
-function startOfWeek(date) {
-  const start = new Date(date);
-  const weekday = start.getDay() || 7;
-  start.setDate(start.getDate() - weekday + 1);
-  return start;
-}
+const periodCopy = {
+  day: {
+    counter: "heute",
+    complete: "Tagesziel erreicht",
+    remaining: "für das Tagesziel",
+  },
+  week: {
+    counter: "diese Woche",
+    complete: "Wochenziel erreicht",
+    remaining: "für den Wochen-Streak",
+  },
+  month: {
+    counter: "diesen Monat",
+    complete: "Monatsziel erreicht",
+    remaining: "für den Monats-Streak",
+  },
+};
 
-function weekDates(anchorDate) {
-  const start = startOfWeek(anchorDate);
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return toDateKey(date);
-  });
-}
-
-export default function WeeklyProgress({ completions, targetPerWeek, streakInfo }) {
-  const completedDates = new Set(completions);
-  const doneThisWeek =
-    streakInfo?.currentWeekCount ?? weekDates(new Date()).filter((date) => completedDates.has(date)).length;
-  const target = streakInfo?.currentWeekTarget ?? Math.max(1, Math.min(7, Number(targetPerWeek) || 7));
-  const percent = clampPercent((doneThisWeek / target) * 100);
-  const reached = streakInfo?.currentWeekComplete ?? doneThisWeek >= target;
-  const remaining = Math.max(0, target - doneThisWeek);
+export default function WeeklyProgress({ streakInfo }) {
+  const period = streakInfo?.frequencyPeriod ?? "week";
+  const copy = periodCopy[period];
+  const done = streakInfo?.currentPeriodCount ?? streakInfo?.currentWeekCount ?? 0;
+  const target = streakInfo?.currentPeriodTarget ?? streakInfo?.currentWeekTarget ?? 1;
+  const reached = streakInfo?.currentPeriodComplete ?? streakInfo?.currentWeekComplete ?? false;
+  const paused = streakInfo?.currentPeriodPaused ?? false;
+  const percent = paused ? 0 : clampPercent((done / target) * 100);
+  const remaining = Math.max(0, target - done);
 
   return (
-    <div className={`rounded-lg border p-3 ${reached ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30" : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/25"}`}>
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div className="py-1">
+      <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {doneThisWeek} von {target} diese Woche
+          <p className="text-sm font-bold text-ink">
+            {paused ? "Heute pausiert" : `${done} von ${target} ${copy.counter}`}
           </p>
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {reached ? "Wochenziel erreicht" : `Noch ${remaining} für den Streak`}
+          <p className="mt-1 text-xs font-semibold text-ink">
+            {paused ? "Kein Tagesziel fällig" : reached ? copy.complete : `Noch ${remaining} ${copy.remaining}`}
           </p>
         </div>
-        <span className={`text-xs font-bold ${reached ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
-          {percent}%
-        </span>
+        <span className="text-xs font-black text-ink">{percent}%</span>
       </div>
-      <div className="h-2.5 overflow-hidden rounded-full bg-white/80 dark:bg-slate-900">
+      <div className="h-1.5 overflow-hidden rounded-full bg-canvas-deep/80">
         <div
-          className={`h-full rounded-full transition-all duration-300 ${reached ? "bg-emerald-500" : "bg-amber-500"}`}
+          className="h-full rounded-full bg-gradient-to-r from-accent/70 to-accent transition-all duration-300"
           style={{ width: `${percent}%` }}
         />
       </div>

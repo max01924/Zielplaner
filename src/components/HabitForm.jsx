@@ -1,9 +1,37 @@
 import { Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { daysInMonth } from "../utils/date.js";
 
-export default function HabitForm({ onCreate, onCancel }) {
+export default function HabitForm({ monthDate, onCreate, onCancel }) {
   const [name, setName] = useState("");
-  const [targetPerWeek, setTargetPerWeek] = useState(7);
+  const [frequencyPeriod, setFrequencyPeriod] = useState("week");
+  const [targetCount, setTargetCount] = useState(7);
+  const maximumMonthlyTarget = daysInMonth(monthDate);
+
+  useEffect(() => {
+    if (frequencyPeriod === "month") {
+      setTargetCount((current) => Math.min(maximumMonthlyTarget, Math.max(1, Number(current) || 1)));
+    }
+  }, [frequencyPeriod, maximumMonthlyTarget]);
+
+  function changeFrequency(nextPeriod) {
+    setFrequencyPeriod(nextPeriod);
+    if (nextPeriod === "day") {
+      setTargetCount(1);
+    } else if (nextPeriod === "week") {
+      setTargetCount((current) => Math.min(7, Math.max(1, Number(current) || 1)));
+    } else {
+      setTargetCount((current) => Math.min(maximumMonthlyTarget, Math.max(1, Number(current) || 1)));
+    }
+  }
+
+  function changeMonthlyTarget(value) {
+    if (value === "") {
+      setTargetCount("");
+      return;
+    }
+    setTargetCount(Math.min(maximumMonthlyTarget, Math.max(1, Number(value))));
+  }
 
   function submit(event) {
     event.preventDefault();
@@ -12,35 +40,61 @@ export default function HabitForm({ onCreate, onCancel }) {
       return;
     }
 
-    onCreate({ name: trimmedName, targetPerWeek });
+    onCreate({ name: trimmedName, frequencyPeriod, targetCount: Number(targetCount) || 1 });
     setName("");
-    setTargetPerWeek(7);
+    setFrequencyPeriod("week");
+    setTargetCount(7);
   }
 
   return (
-    <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-      <div className="grid gap-3 md:grid-cols-[1fr_160px_auto_auto]">
+    <form onSubmit={submit} className="bg-depth-panel rounded-panel p-5 shadow-card sm:p-6">
+      <div className="mb-5">
+        <p className="mb-1 text-[10px] font-bold uppercase text-subtle">Neue Routine</p>
+        <p className="text-base font-black uppercase text-ink">Habit anlegen</p>
+      </div>
+      <div className="flex flex-col gap-3 xl:flex-row">
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Habit"
-          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+          className="bg-depth-control min-h-12 min-w-0 flex-1 rounded-control px-4 text-sm text-ink shadow-inset outline-none transition placeholder:text-subtle focus:ring-2 focus:ring-accent"
           autoFocus
         />
         <select
-          value={targetPerWeek}
-          onChange={(event) => setTargetPerWeek(Number(event.target.value))}
-          className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+          value={frequencyPeriod}
+          onChange={(event) => changeFrequency(event.target.value)}
+          className="bg-depth-control min-h-12 rounded-control px-4 text-sm text-ink shadow-inset outline-none transition focus:ring-2 focus:ring-accent xl:w-40"
         >
-          {[1, 2, 3, 4, 5, 6, 7].map((value) => (
-            <option key={value} value={value}>
-              {value}x pro Woche
-            </option>
-          ))}
+          <option value="day">Pro Tag</option>
+          <option value="week">Pro Woche</option>
+          <option value="month">Pro Monat</option>
         </select>
+        {frequencyPeriod === "week" ? (
+          <select
+            value={targetCount}
+            onChange={(event) => setTargetCount(Number(event.target.value))}
+            aria-label="Häufigkeit pro Woche"
+            className="bg-depth-control min-h-12 rounded-control px-4 text-sm text-ink shadow-inset outline-none transition focus:ring-2 focus:ring-accent xl:w-44"
+          >
+            {[1, 2, 3, 4, 5, 6, 7].map((value) => (
+              <option key={value} value={value}>{value}x pro Woche</option>
+            ))}
+          </select>
+        ) : null}
+        {frequencyPeriod === "month" ? (
+          <input
+            type="number"
+            min="1"
+            max={maximumMonthlyTarget}
+            value={targetCount}
+            onChange={(event) => changeMonthlyTarget(event.target.value)}
+            aria-label="Häufigkeit pro Monat"
+            className="bg-depth-control min-h-12 rounded-control px-4 text-sm text-ink shadow-inset outline-none transition focus:ring-2 focus:ring-accent xl:w-44"
+          />
+        ) : null}
         <button
           type="submit"
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-bold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-ink shadow-inset transition hover:brightness-110"
         >
           <Plus className="h-4 w-4" />
           Hinzufügen
@@ -48,7 +102,7 @@ export default function HabitForm({ onCreate, onCancel }) {
         <button
           type="button"
           onClick={onCancel}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          className="bg-depth-control inline-flex min-h-12 items-center justify-center gap-2 rounded-control px-5 text-sm font-bold text-muted shadow-inset transition hover:brightness-125 hover:text-ink"
         >
           <X className="h-4 w-4" />
           Abbrechen

@@ -1,7 +1,7 @@
 export default function TabNav({ activeTab, tabs, onChange }) {
   return (
     <div
-      className="grid gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+      className="grid w-full max-w-[620px] gap-3 sm:gap-6"
       style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
     >
       {tabs.map((tab) => {
@@ -11,14 +11,16 @@ export default function TabNav({ activeTab, tabs, onChange }) {
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`min-h-11 rounded-md px-3 text-sm font-bold transition ${
+            className={`relative min-h-11 px-0.5 text-[10px] font-black uppercase transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink/70 sm:px-1 sm:text-sm ${
               isActive
-                ? "bg-slate-950 text-white shadow-sm dark:bg-sky-500 dark:text-slate-950"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                ? "text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent"
+                : "text-subtle hover:text-ink"
             }`}
             aria-pressed={isActive}
+            aria-label={tab.label}
           >
-            {tab.label}
+            <span className="sm:hidden">{tab.shortLabel ?? tab.label}</span>
+            <span className="hidden sm:inline">{tab.label}</span>
           </button>
         );
       })}

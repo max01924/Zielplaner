@@ -1,35 +1,29 @@
 import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import DateNavigator from "./DateNavigator.jsx";
 import HourSlot from "./HourSlot.jsx";
-import ProgressBar from "./ProgressBar.jsx";
-import { checklistProgress, clampPercent } from "../utils/progress.js";
-import { toDateKey } from "../utils/date.js";
+import { addDays, formatFullDate, formatWeekday } from "../utils/date.js";
+import { isCurrentPeriod, periodTimeProgress } from "../utils/periodProgress.js";
+import ParentSelect from "./ParentSelect.jsx";
+import PeriodHeader from "./PeriodHeader.jsx";
+import TaskBacklog from "./TaskBacklog.jsx";
+import TimeInput from "./TimeInput.jsx";
+import DailyReview from "./DailyReview.jsx";
 
-function dayProgress(selectedDate) {
-  const now = new Date();
-  const selectedKey = toDateKey(selectedDate);
-  const todayKey = toDateKey(now);
-
-  if (selectedKey < todayKey) {
-    return 100;
-  }
-  if (selectedKey > todayKey) {
-    return 0;
-  }
-
-  return clampPercent(((now.getHours() + now.getMinutes() / 60) / 24) * 100);
-}
-
-export default function DayView({ selectedDate, onDateChange, tasks, onAddTask, onToggleTask, onUpdateTask, onDeleteTask }) {
-  const [time, setTime] = useState("09:00");
+export default function DayView({ selectedDate, onDateChange, tasks, priorities, parentPrefill, review, canReview, onNavigateParent, onAddTask, onToggleTask, onToggleFocus, onUpdateTask, onDeleteTask, onSaveReview }) {
+  const [time, setTime] = useState("");
   const [text, setText] = useState("");
-  const sortedTasks = useMemo(
-    () => [...tasks].sort((a, b) => a.time.localeCompare(b.time) || a.text.localeCompare(b.text)),
+  const [weeklyPriorityId, setWeeklyPriorityId] = useState(parentPrefill);
+  const scheduledTasks = useMemo(
+    () => tasks.filter((task) => task.time).sort((a, b) => a.time.localeCompare(b.time) || a.text.localeCompare(b.text)),
     [tasks]
   );
-  const taskProgress = checklistProgress(tasks);
-  const timeProgress = dayProgress(selectedDate);
+  const backlogTasks = useMemo(
+    () => tasks.filter((task) => !task.time).sort((a, b) => a.text.localeCompare(b.text)),
+    [tasks]
+  );
+  const completedTasks = tasks.filter((task) => task.done).length;
+  const timeProgress = periodTimeProgress("day", selectedDate);
+  const focusCount = scheduledTasks.filter((task) => task.isDailyFocus).length;
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -55,6 +49,8 @@ export default function DayView({ selectedDate, onDateChange, tasks, onAddTask, 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onDateChange, selectedDate]);
 
+  useEffect(() => setWeeklyPriorityId(parentPrefill), [parentPrefill]);
+
   function submit(event) {
     event.preventDefault();
     const trimmedText = text.trim();
@@ -62,45 +58,59 @@ export default function DayView({ selectedDate, onDateChange, tasks, onAddTask, 
       return;
     }
 
-    onAddTask({ time, text: trimmedText });
+    onAddTask({ time, text: trimmedText, weeklyPriorityId });
+    setTime("");
     setText("");
+    setWeeklyPriorityId(null);
   }
 
   return (
-    <section className="space-y-5">
-      <DateNavigator selectedDate={selectedDate} onChange={onDateChange} />
+    <section className="space-y-10">
+      <PeriodHeader
+        meta={formatFullDate(selectedDate)}
+        title={formatWeekday(selectedDate)}
+        previousAriaLabel="Vorheriger Tag"
+        nextAriaLabel="Nächster Tag"
+        progressLabel="Tagesfortschritt"
+        isCurrent={isCurrentPeriod("day", selectedDate)}
+        onPrevious={() => onDateChange(addDays(selectedDate, -1))}
+        onCurrent={() => onDateChange(new Date())}
+        onNext={() => onDateChange(addDays(selectedDate, 1))}
+        completedTasks={completedTasks}
+        totalTasks={tasks.length}
+        timeProgress={timeProgress}
+      />
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ProgressBar
-          label="Tagesaufgaben"
-          value={taskProgress}
-          meta={`${tasks.filter((task) => task.done).length} von ${tasks.length} Aufgaben erledigt`}
-        />
-        <ProgressBar
-          label="Tagesfortschritt"
-          value={timeProgress}
-          meta="Berechnet aus bereits vergangenen Stunden"
-        />
-      </div>
-
-      <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-        <p className="mb-3 text-sm font-bold text-slate-950 dark:text-white">Aufgabe zur Stunde hinzufügen</p>
-        <div className="grid gap-3 sm:grid-cols-[140px_1fr_auto]">
-          <input
-            type="time"
-            value={time}
-            onChange={(event) => setTime(event.target.value)}
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-          />
-          <input
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="z.B. GUI fertig"
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-950 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-          />
+      <form onSubmit={submit} className="bg-depth-panel rounded-panel p-5 shadow-card sm:p-6">
+        <div className="mb-5 flex items-end justify-between gap-4">
+          <div>
+            <p className="mb-1 text-[10px] font-bold uppercase text-subtle">Schnellerfassung</p>
+            <p className="text-base font-black uppercase text-ink">Aufgabe hinzufügen</p>
+          </div>
+          <span className="h-2 w-2 rounded-full bg-accent" />
+        </div>
+        <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)_minmax(220px,0.7fr)_auto] lg:items-end">
+          <label>
+            <span className="mb-2 block text-[10px] font-bold uppercase text-subtle">Uhrzeit optional</span>
+            <TimeInput
+              value={time}
+              onValueChange={setTime}
+              className="bg-depth-control min-h-12 w-full rounded-control px-4 text-sm text-ink shadow-inset outline-none transition focus:ring-2 focus:ring-accent"
+            />
+          </label>
+          <label>
+            <span className="mb-2 block text-[10px] font-bold uppercase text-subtle">Aufgabe</span>
+            <input
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder="z.B. GUI fertig"
+              className="bg-depth-control min-h-12 w-full rounded-control px-4 text-sm text-ink shadow-inset outline-none transition placeholder:text-subtle focus:ring-2 focus:ring-accent"
+            />
+          </label>
+          <ParentSelect value={weeklyPriorityId} onChange={setWeeklyPriorityId} options={priorities} label="Wochenpriorität" />
           <button
             type="submit"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-bold text-white hover:bg-slate-800 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-ink shadow-inset transition hover:brightness-110"
           >
             <Plus className="h-4 w-4" />
             Hinzufügen
@@ -108,32 +118,55 @@ export default function DayView({ selectedDate, onDateChange, tasks, onAddTask, 
         </div>
       </form>
 
-      <div className="rounded-lg border border-sky-100 bg-sky-50/80 p-4 shadow-sm dark:border-sky-900/70 dark:bg-sky-950/30">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-black text-slate-950 dark:text-sky-50">Tageszeitstrahl</h2>
-          <span className="rounded-md bg-white px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-slate-900 dark:text-slate-300">
-            {sortedTasks.length} Einträge
+      <TaskBacklog
+        tasks={backlogTasks}
+        priorities={priorities}
+        onNavigateParent={onNavigateParent}
+        onToggleTask={onToggleTask}
+        onToggleFocus={onToggleFocus}
+        onUpdateTask={onUpdateTask}
+        onDeleteTask={onDeleteTask}
+      />
+
+      <div>
+        <div className="mb-3 flex items-end justify-between gap-4 pb-2">
+          <div>
+            <p className="mb-1 text-[11px] font-bold uppercase text-subtle">Ablauf</p>
+            <h2 className="text-2xl font-black uppercase text-ink">Tageszeitstrahl</h2>
+          </div>
+          <span className="bg-depth-control rounded-control px-3 py-2 text-xs font-bold text-muted shadow-inset">
+            {focusCount ? `${focusCount} Fokus · ` : ""}{scheduledTasks.length} {scheduledTasks.length === 1 ? "Eintrag" : "Einträge"}
           </span>
         </div>
 
-        {sortedTasks.length ? (
-          <ol className="pl-2">
-            {sortedTasks.map((task) => (
+        {scheduledTasks.length ? (
+          <ol className="pl-2 sm:pl-3">
+            {scheduledTasks.map((task) => (
               <HourSlot
                 key={task.id}
                 task={task}
+                priorities={priorities}
+                parent={priorities.find((priority) => priority.id === task.weeklyPriorityId)}
+                onNavigateParent={onNavigateParent}
                 onToggle={() => onToggleTask(task.id)}
+                onToggleFocus={() => onToggleFocus(task.id)}
                 onUpdate={(updatedTask) => onUpdateTask(task.id, updatedTask)}
                 onDelete={() => onDeleteTask(task.id)}
               />
             ))}
           </ol>
         ) : (
-          <div className="rounded-lg border border-dashed border-sky-300 bg-white p-6 text-center text-sm text-slate-500 dark:border-sky-800 dark:bg-slate-950 dark:text-slate-400">
-            Für diesen Tag sind noch keine Aufgaben geplant.
+          <div className="flat-dashed-frame flex min-h-44 items-center justify-center rounded-panel p-10 text-center text-sm text-muted sm:min-h-48 sm:p-12">
+            {backlogTasks.length ? "Noch keine Aufgabe mit Uhrzeit eingeplant." : "Für diesen Tag sind noch keine Aufgaben geplant."}
           </div>
         )}
       </div>
+
+      <DailyReview
+        review={review}
+        canEdit={canReview}
+        onSave={onSaveReview}
+      />
     </section>
   );
 }

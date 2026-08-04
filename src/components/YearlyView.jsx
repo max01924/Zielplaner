@@ -1,53 +1,79 @@
-import { dayOfYear } from "../utils/date.js";
-import { clampPercent } from "../utils/progress.js";
+import { addYears } from "../utils/date.js";
+import { isCurrentPeriod, periodTimeProgress } from "../utils/periodProgress.js";
+import { checklistProgress, clampPercent } from "../utils/progress.js";
 import GoalCard from "./GoalCard.jsx";
 import GoalForm from "./GoalForm.jsx";
-import ProgressBar from "./ProgressBar.jsx";
+import DecorativeAccent from "./DecorativeAccent.jsx";
+import PeriodHeader from "./PeriodHeader.jsx";
 
-function yearProgress(date) {
-  return clampPercent((dayOfYear(date) / 365) * 100);
+function chatGptMomentLabel(year) {
+  const difference = year - 2022;
+  if (difference === 0) return "ChatGPT-Moment";
+  const years = Math.abs(difference);
+  return `${years} ${years === 1 ? "Jahr" : "Jahre"} ${difference > 0 ? "seit" : "vor"} ChatGPT-Moment`;
 }
 
-export default function YearlyView({ goals, onCreateGoal, onUpdateGoal, onDeleteGoal, onAddItem, onUpdateItem, onToggleItem, onDeleteItem }) {
-  const now = new Date();
-  const progress = yearProgress(now);
+export default function YearlyView({ goals, monthlyGoals, selectedDate, onDateChange, onNavigateChild, onDeriveChild, onCreateGoal, onUpdateGoal, onDeleteGoal, onAddItem, onUpdateItem, onToggleItem, onDeleteItem }) {
+  const periodKey = String(selectedDate.getFullYear());
+  const checklistItems = goals.flatMap((goal) => goal.checklist);
+  const completedTasks = checklistItems.filter((item) => item.done).length;
+  const timeProgress = periodTimeProgress("year", selectedDate);
 
   return (
-    <section className="space-y-5">
-      <div className="grid gap-3 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-          <p className="text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Jährlich</p>
-          <h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">{now.getFullYear()}</h2>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Jahresziele bleiben bewusst breiter formuliert und haben eigene Checklisten.
-          </p>
-        </div>
-        <ProgressBar
-          label="Jahresfortschritt"
-          value={progress}
-          meta={`${dayOfYear(now)} von 365 Tagen vergangen`}
-        />
-      </div>
+    <section className="space-y-7">
+      <PeriodHeader
+        meta={chatGptMomentLabel(selectedDate.getFullYear())}
+        title={periodKey}
+        previousAriaLabel="Vorheriges Jahr"
+        nextAriaLabel="Nächstes Jahr"
+        progressLabel="Jahresfortschritt"
+        isCurrent={isCurrentPeriod("year", selectedDate)}
+        onPrevious={() => onDateChange(addYears(selectedDate, -1))}
+        onCurrent={() => onDateChange(new Date())}
+        onNext={() => onDateChange(addYears(selectedDate, 1))}
+        completedTasks={completedTasks}
+        totalTasks={checklistItems.length}
+        timeProgress={timeProgress}
+      />
 
       <GoalForm
         label="Neues Jahresziel"
         placeholder="z.B. Ein großes Projekt präsentierfähig machen"
+        periodKey={periodKey}
         onCreate={onCreateGoal}
       />
 
-      <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-4 shadow-sm dark:border-emerald-900/70 dark:bg-emerald-950/25">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-black text-slate-950 dark:text-emerald-50">Jahresaufgaben</h2>
-          <span className="rounded-md bg-white px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-slate-900 dark:text-slate-300">
+      <div>
+        <div className="relative mb-5 flex items-end justify-between gap-4 pb-4">
+          <div>
+            <p className="mb-1 text-[11px] font-bold uppercase text-subtle">Richtung</p>
+            <h2 className="text-2xl font-black uppercase text-ink">Jahresaufgaben</h2>
+          </div>
+          <DecorativeAccent
+            shape="star"
+            size={14}
+            className="right-[78px] top-2 hidden sm:block"
+          />
+          <span className="text-xs font-bold uppercase text-muted">
             {goals.length} Ziele
           </span>
         </div>
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-2">
           {goals.map((goal) => (
             <GoalCard
               key={goal.id}
               goal={goal}
               periodLabel="Jahresziel"
+              children={monthlyGoals.filter((child) => child.parentGoalId === goal.id)}
+              childLabel="Monatsziele"
+              implementationValue={(() => {
+                const children = monthlyGoals.filter((child) => child.parentGoalId === goal.id);
+                return children.length
+                  ? clampPercent(children.reduce((sum, child) => sum + checklistProgress(child.checklist), 0) / children.length)
+                  : 0;
+              })()}
+              onNavigateChild={onNavigateChild}
+              onDeriveChild={onDeriveChild}
               onUpdateGoal={onUpdateGoal}
               onDeleteGoal={onDeleteGoal}
               onAddItem={onAddItem}

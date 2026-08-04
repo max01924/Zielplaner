@@ -1,54 +1,75 @@
-import { formatMonth, daysInMonth } from "../utils/date.js";
+import { addMonths, formatMonthName, toMonthKey } from "../utils/date.js";
+import { isCurrentPeriod, periodTimeProgress } from "../utils/periodProgress.js";
 import { clampPercent } from "../utils/progress.js";
 import GoalCard from "./GoalCard.jsx";
 import GoalForm from "./GoalForm.jsx";
-import ProgressBar from "./ProgressBar.jsx";
+import DecorativeAccent from "./DecorativeAccent.jsx";
+import PeriodHeader from "./PeriodHeader.jsx";
 
-function monthProgress(date) {
-  const totalDays = daysInMonth(date);
-  return clampPercent((date.getDate() / totalDays) * 100);
-}
-
-export default function MonthlyView({ goals, onCreateGoal, onUpdateGoal, onDeleteGoal, onAddItem, onUpdateItem, onToggleItem, onDeleteItem }) {
-  const now = new Date();
-  const progress = monthProgress(now);
+export default function MonthlyView({ goals, yearlyGoals, weeklyPriorities, selectedDate, onDateChange, parentPrefill, onNavigateParent, onNavigateChild, onDeriveChild, onCreateGoal, onUpdateGoal, onDeleteGoal, onAddItem, onUpdateItem, onToggleItem, onDeleteItem }) {
+  const periodKey = toMonthKey(selectedDate);
+  const checklistItems = goals.flatMap((goal) => goal.checklist);
+  const completedTasks = checklistItems.filter((item) => item.done).length;
+  const timeProgress = periodTimeProgress("month", selectedDate);
 
   return (
-    <section className="space-y-5">
-      <div className="grid gap-3 lg:grid-cols-[1fr_360px]">
-        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-          <p className="text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Monatlich</p>
-          <h2 className="mt-1 text-2xl font-black capitalize text-slate-950 dark:text-white">{formatMonth(now)}</h2>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-            Monatsziele sind eigenständig und werden nicht aus Tagesaufgaben berechnet.
-          </p>
-        </div>
-        <ProgressBar
-          label="Monatsfortschritt"
-          value={progress}
-          meta={`${now.getDate()} von ${daysInMonth(now)} Tagen vergangen`}
-        />
-      </div>
+    <section className="space-y-7">
+      <PeriodHeader
+        meta={`Monat ${String(selectedDate.getMonth() + 1).padStart(2, "0")} · ${selectedDate.getFullYear()}`}
+        title={formatMonthName(selectedDate)}
+        previousAriaLabel="Vorheriger Monat"
+        nextAriaLabel="Nächster Monat"
+        progressLabel="Monatsfortschritt"
+        isCurrent={isCurrentPeriod("month", selectedDate)}
+        onPrevious={() => onDateChange(addMonths(selectedDate, -1))}
+        onCurrent={() => onDateChange(new Date())}
+        onNext={() => onDateChange(addMonths(selectedDate, 1))}
+        completedTasks={completedTasks}
+        totalTasks={checklistItems.length}
+        timeProgress={timeProgress}
+      />
 
       <GoalForm
         label="Neues Monatsziel"
         placeholder="z.B. NexusFalcon fertig"
+        periodKey={periodKey}
+        parentOptions={yearlyGoals}
+        parentPrefill={parentPrefill}
         onCreate={onCreateGoal}
       />
 
-      <div className="rounded-lg border border-indigo-100 bg-indigo-50/70 p-4 shadow-sm dark:border-indigo-900/70 dark:bg-indigo-950/30">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-lg font-black text-slate-950 dark:text-indigo-50">Monatsaufgaben</h2>
-          <span className="rounded-md bg-white px-2.5 py-1 text-xs font-bold text-slate-500 dark:bg-slate-900 dark:text-slate-300">
+      <div>
+        <div className="relative mb-5 flex items-end justify-between gap-4 pb-4">
+          <div>
+            <p className="mb-1 text-[11px] font-bold uppercase text-subtle">Fokus</p>
+            <h2 className="text-2xl font-black uppercase text-ink">Monatsaufgaben</h2>
+          </div>
+          <DecorativeAccent
+            shape="diamond"
+            size={14}
+            className="right-[78px] top-2 hidden sm:block"
+          />
+          <span className="text-xs font-bold uppercase text-muted">
             {goals.length} Ziele
           </span>
         </div>
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-2">
           {goals.map((goal) => (
             <GoalCard
               key={goal.id}
               goal={goal}
               periodLabel="Monatsziel"
+              parentGoal={yearlyGoals.find((parent) => parent.id === goal.parentGoalId)}
+              parentOptions={yearlyGoals}
+              children={weeklyPriorities.filter((priority) => priority.monthlyGoalId === goal.id)}
+              childLabel="Wochenprioritäten"
+              implementationValue={(() => {
+                const children = weeklyPriorities.filter((priority) => priority.monthlyGoalId === goal.id);
+                return children.length ? clampPercent((children.filter((priority) => priority.done).length / children.length) * 100) : 0;
+              })()}
+              onNavigateParent={onNavigateParent}
+              onNavigateChild={onNavigateChild}
+              onDeriveChild={onDeriveChild}
               onUpdateGoal={onUpdateGoal}
               onDeleteGoal={onDeleteGoal}
               onAddItem={onAddItem}

@@ -8,6 +8,16 @@ const monthFormatter = new Intl.DateTimeFormat("de-DE", {
   month: "long",
   year: "numeric",
 });
+const monthNameFormatter = new Intl.DateTimeFormat("de-DE", { month: "long" });
+const shortDayFormatter = new Intl.DateTimeFormat("de-DE", {
+  day: "2-digit",
+  month: "short",
+});
+const shortDayYearFormatter = new Intl.DateTimeFormat("de-DE", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
 
 export function toDateKey(date) {
   const year = date.getFullYear();
@@ -22,8 +32,46 @@ export function addDays(date, amount) {
   return next;
 }
 
+export function startOfIsoWeek(date) {
+  const start = new Date(date);
+  start.setHours(12, 0, 0, 0);
+  const weekday = start.getDay() || 7;
+  start.setDate(start.getDate() - weekday + 1);
+  return start;
+}
+
+export function addWeeks(date, amount) {
+  return addDays(startOfIsoWeek(date), amount * 7);
+}
+
+export function formatWeekRange(date) {
+  const start = startOfIsoWeek(date);
+  const end = addDays(start, 6);
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${shortDayFormatter.format(start)} - ${shortDayYearFormatter.format(end)}`;
+  }
+  return `${shortDayYearFormatter.format(start)} - ${shortDayYearFormatter.format(end)}`;
+}
+
+export function isoWeekNumber(date) {
+  const target = startOfIsoWeek(date);
+  target.setDate(target.getDate() + 3);
+  const firstThursday = new Date(target.getFullYear(), 0, 4, 12);
+  const firstWeekStart = startOfIsoWeek(firstThursday);
+  return 1 + Math.round((target - firstWeekStart) / 604_800_000);
+}
+
 export function addMonths(date, amount) {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+export function addYears(date, amount) {
+  return new Date(date.getFullYear() + amount, 0, 1, 12);
+}
+
+export function dateFromKey(dateKey) {
+  const [year, month = 1, day = 1] = String(dateKey).split("-").map(Number);
+  return new Date(year, month - 1, day, 12);
 }
 
 export function toMonthKey(date) {
@@ -42,6 +90,10 @@ export function formatFullDate(date) {
 
 export function formatMonth(date) {
   return monthFormatter.format(date);
+}
+
+export function formatMonthName(date) {
+  return monthNameFormatter.format(date);
 }
 
 export function daysInMonth(date) {
