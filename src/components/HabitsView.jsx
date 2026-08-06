@@ -58,7 +58,7 @@ export default function HabitsView({
                 type="button"
                 onClick={() => setViewMode("week")}
                 className={`inline-flex min-h-9 items-center gap-2 rounded-[18px] px-3 text-[10px] font-black uppercase transition ${
-                  isWeekView ? "bg-accent text-ink" : "text-muted hover:text-ink"
+                  isWeekView ? "bg-accent text-accent-contrast" : "text-muted hover:text-ink"
                 }`}
                 aria-pressed={isWeekView}
               >
@@ -69,7 +69,7 @@ export default function HabitsView({
                 type="button"
                 onClick={() => setViewMode("month")}
                 className={`inline-flex min-h-9 items-center gap-2 rounded-[18px] px-3 text-[10px] font-black uppercase transition ${
-                  viewMode === "month" ? "bg-accent text-ink" : "text-muted hover:text-ink"
+                  viewMode === "month" ? "bg-accent text-accent-contrast" : "text-muted hover:text-ink"
                 }`}
                 aria-pressed={viewMode === "month"}
               >
@@ -80,7 +80,7 @@ export default function HabitsView({
                 type="button"
                 onClick={() => setViewMode("year")}
                 className={`inline-flex min-h-9 items-center gap-2 rounded-[18px] px-3 text-[10px] font-black uppercase transition ${
-                  isYearView ? "bg-accent text-ink" : "text-muted hover:text-ink"
+                  isYearView ? "bg-accent text-accent-contrast" : "text-muted hover:text-ink"
                 }`}
                 aria-pressed={isYearView}
               >
@@ -99,7 +99,7 @@ export default function HabitsView({
             <button
               type="button"
               onClick={() => onMonthChange(new Date())}
-              className="min-h-11 rounded-control bg-accent px-4 text-xs font-black uppercase text-ink shadow-inset transition hover:brightness-110"
+              className="min-h-11 rounded-control bg-accent px-4 text-xs font-black uppercase text-accent-contrast shadow-inset transition hover:brightness-110"
             >
               Heute
             </button>
@@ -118,7 +118,7 @@ export default function HabitsView({
           <button
             type="button"
             onClick={() => setIsAdding(true)}
-            className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-ink shadow-inset transition hover:brightness-110"
+            className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-accent-contrast shadow-inset transition hover:brightness-110"
           >
             <Plus className="h-4 w-4" />
             Habit hinzufügen

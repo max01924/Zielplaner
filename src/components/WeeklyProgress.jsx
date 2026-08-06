@@ -13,7 +13,7 @@ const periodCopy = {
   },
   month: {
     counter: "diesen Monat",
-    complete: "Monatsziel erreicht",
+    complete: "Monatspriorität erreicht",
     remaining: "für den Monats-Streak",
   },
 };

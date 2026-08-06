@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  carryOverIncompleteDailyTasks,
   createChecklistItem,
   createDailyTask,
   createGoal,
@@ -204,6 +205,28 @@ function customQuestionsField(value) {
   });
 }
 
+function reviewQuestionsField(value) {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) {
+    const error = new Error("questions muss eine Liste sein.");
+    error.status = 400;
+    throw error;
+  }
+  return value.map((item) => {
+    if (!item || typeof item.question !== "string" || !item.question.trim()) {
+      const error = new Error("Jede Review-Frage benötigt einen Text.");
+      error.status = 400;
+      throw error;
+    }
+    return {
+      id: typeof item.id === "string" ? item.id : "",
+      kind: item.kind === "positive" || item.kind === "improvement" ? item.kind : "custom",
+      question: item.question.trim(),
+      answer: typeof item.answer === "string" ? item.answer.trim() : "",
+    };
+  });
+}
+
 function dailyReviewAvailable(dateKey, now = new Date()) {
   const [year, month, day] = dateKey.split("-").map(Number);
   return now >= new Date(year, month - 1, day, 19, 0, 0, 0);
@@ -279,6 +302,15 @@ app.post("/api/weeks/:weekKey/priorities", asyncRoute((request, response) => {
   response.status(201).json(priority);
 }));
 
+app.post("/api/monthly-goals/:goalId/weekly-priorities", asyncRoute((request, response) => {
+  const priority = createWeeklyPriority({
+    weekKey: nullableDateKeyField(request.body.weekKey, "weekKey"),
+    text: stringField(request.body.text, "text"),
+    monthlyGoalId: request.params.goalId,
+  });
+  response.status(201).json(priority);
+}));
+
 app.patch("/api/weekly-priorities/:id", asyncRoute((request, response) => {
   const patch = {};
   if ("text" in request.body) {
@@ -289,6 +321,9 @@ app.patch("/api/weekly-priorities/:id", asyncRoute((request, response) => {
   }
   if ("monthlyGoalId" in request.body) {
     patch.monthlyGoalId = nullableIdField(request.body.monthlyGoalId, "monthlyGoalId");
+  }
+  if ("weekKey" in request.body) {
+    patch.weekKey = nullableDateKeyField(request.body.weekKey, "weekKey");
   }
 
   const priority = updateWeeklyPriority(request.params.id, patch);
@@ -326,8 +361,12 @@ app.put("/api/weeks/:weekKey/review", asyncRoute((request, response) => {
   const positive = optionalStringField(request.body.positive);
   const improvement = optionalStringField(request.body.improvement);
   const customQuestions = customQuestionsField(request.body.customQuestions);
+  const questions = reviewQuestionsField(request.body.questions);
   const complete = request.body.complete === true;
-  if (complete && (!positive || !improvement || customQuestions.some((item) => !item.answer))) {
+  const hasOpenQuestion = questions
+    ? questions.some((item) => !item.answer)
+    : (!positive || !improvement || customQuestions.some((item) => !item.answer));
+  if (complete && hasOpenQuestion) {
     const error = new Error("Zum Abschließen müssen alle Fragen beantwortet sein.");
     error.status = 400;
     throw error;
@@ -338,6 +377,7 @@ app.put("/api/weeks/:weekKey/review", asyncRoute((request, response) => {
     positive,
     improvement,
     customQuestions,
+    questions,
     complete,
   }));
 }));
@@ -430,8 +470,12 @@ app.put("/api/daily-reviews/:dateKey", asyncRoute((request, response) => {
   const positive = optionalStringField(request.body.positive);
   const improvement = optionalStringField(request.body.improvement);
   const customQuestions = customQuestionsField(request.body.customQuestions);
+  const questions = reviewQuestionsField(request.body.questions);
   const complete = request.body.complete === true;
-  if (complete && (!positive || !improvement || customQuestions.some((item) => !item.answer))) {
+  const hasOpenQuestion = questions
+    ? questions.some((item) => !item.answer)
+    : (!positive || !improvement || customQuestions.some((item) => !item.answer));
+  if (complete && hasOpenQuestion) {
     const error = new Error("Zum Abschließen müssen alle Fragen beantwortet sein.");
     error.status = 400;
     throw error;
@@ -442,6 +486,7 @@ app.put("/api/daily-reviews/:dateKey", asyncRoute((request, response) => {
     positive,
     improvement,
     customQuestions,
+    questions,
     complete,
   }));
 }));
@@ -457,6 +502,14 @@ app.post("/api/daily-tasks", asyncRoute((request, response) => {
       : false,
   });
   response.status(201).json(task);
+}));
+
+app.post("/api/daily-tasks/carry-over", asyncRoute((request, response) => {
+  const tasks = carryOverIncompleteDailyTasks({
+    fromDateKey: dateKeyField(request.body.fromDateKey, "fromDateKey"),
+    toDateKey: dateKeyField(request.body.toDateKey, "toDateKey"),
+  });
+  response.json({ tasks });
 }));
 
 app.patch("/api/daily-tasks/:id", asyncRoute((request, response) => {

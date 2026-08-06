@@ -7,6 +7,8 @@ import WeeklyTasks from "./WeeklyTasks.jsx";
 
 export default function WeeklyView({
   data,
+  unassignedPriorities,
+  allMonthlyGoals,
   selectedWeek,
   onWeekChange,
   parentPrefill,
@@ -14,6 +16,7 @@ export default function WeeklyView({
   onNavigateTask,
   onDeriveTask,
   onCreatePriority,
+  onAssignPriority,
   onUpdatePriority,
   onDeletePriority,
   onToggleTask,
@@ -45,13 +48,17 @@ export default function WeeklyView({
 
       <WeeklyPriorities
         priorities={priorities}
+        unassignedPriorities={unassignedPriorities}
         tasks={tasks}
         monthlyGoals={monthlyGoals}
+        allMonthlyGoals={allMonthlyGoals}
+        selectedWeek={selectedWeek}
         parentPrefill={parentPrefill}
         onNavigateParent={onNavigateParent}
         onNavigateTask={onNavigateTask}
         onDeriveTask={onDeriveTask}
         onCreate={onCreatePriority}
+        onAssign={onAssignPriority}
         onUpdate={onUpdatePriority}
         onDelete={onDeletePriority}
       />

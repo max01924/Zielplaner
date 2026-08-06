@@ -70,7 +70,7 @@ export default function HabitStatusControl({ habit, onUpdate }) {
               type="button"
               onClick={() => setStatus("active")}
               className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-3 text-xs font-black uppercase transition ${
-                status === "active" ? "bg-accent text-ink" : "bg-depth-control text-muted hover:text-ink"
+                status === "active" ? "bg-accent text-accent-contrast" : "bg-depth-control text-muted hover:text-ink"
               }`}
             >
               <Play className="h-4 w-4" />
@@ -80,7 +80,7 @@ export default function HabitStatusControl({ habit, onUpdate }) {
               type="button"
               onClick={() => setStatus("paused")}
               className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-control px-3 text-xs font-black uppercase transition ${
-                status === "paused" ? "bg-accent text-ink" : "bg-depth-control text-muted hover:text-ink"
+                status === "paused" ? "bg-accent text-accent-contrast" : "bg-depth-control text-muted hover:text-ink"
               }`}
             >
               <Pause className="h-4 w-4" />
@@ -129,7 +129,7 @@ export default function HabitStatusControl({ habit, onUpdate }) {
               type="button"
               onClick={save}
               disabled={!validPause}
-              className="inline-flex min-h-10 items-center gap-2 rounded-control bg-accent px-4 text-xs font-black uppercase text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex min-h-10 items-center gap-2 rounded-control bg-accent px-4 text-xs font-black uppercase text-accent-contrast transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Check className="h-4 w-4" />
               Übernehmen

@@ -5,9 +5,18 @@ const dayFormatter = new Intl.DateTimeFormat("de-DE", {
   day: "2-digit",
   month: "2-digit",
 });
+const originDateFormatter = new Intl.DateTimeFormat("de-DE", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
 
 function taskDay(dateKey) {
   return dayFormatter.format(new Date(`${dateKey}T12:00:00`));
+}
+
+function originDate(dateKey) {
+  return originDateFormatter.format(new Date(`${dateKey}T12:00:00`));
 }
 
 export function WeeklyTaskRow({ task, onToggle, onNavigate }) {
@@ -18,7 +27,7 @@ export function WeeklyTaskRow({ task, onToggle, onNavigate }) {
           type="button"
           onClick={() => onToggle(task)}
           className={`grid h-6 w-6 shrink-0 self-center place-items-center rounded-lg transition ${
-            task.done ? "bg-accent text-ink" : "bg-canvas-deep text-transparent hover:bg-surface-hover"
+            task.done ? "bg-accent text-accent-contrast" : "bg-canvas-deep text-transparent hover:bg-surface-hover"
           }`}
           aria-label={task.done ? "Aufgabe wieder öffnen" : "Aufgabe abschließen"}
         >
@@ -34,8 +43,13 @@ export function WeeklyTaskRow({ task, onToggle, onNavigate }) {
             <span className={`block text-sm font-semibold leading-relaxed ${task.done ? "text-muted line-through" : "text-ink"}`}>
               {task.text}
             </span>
-            <span className="mt-1.5 block text-[10px] font-bold uppercase text-subtle">
+            <span className="mt-1.5 block text-xs font-semibold text-muted">
               {taskDay(task.dateKey)} · {task.time || "Ohne Uhrzeit"}
+              {task.postponedFromDate ? (
+                <span className="ml-2">
+                  · Aufgeschoben seit {originDate(task.postponedFromDate)}
+                </span>
+              ) : null}
             </span>
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-subtle transition group-hover:translate-x-0.5 group-hover:text-accent" />

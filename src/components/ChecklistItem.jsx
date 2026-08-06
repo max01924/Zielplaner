@@ -21,7 +21,7 @@ export default function ChecklistItem({ item, onToggle, onUpdate, onDelete }) {
         onClick={onToggle}
         className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-control shadow-inset transition ${
           item.done
-            ? "bg-accent text-ink"
+            ? "bg-accent text-accent-contrast"
             : "bg-depth-inset text-transparent hover:brightness-125"
         }`}
         aria-label={item.done ? "Teilaufgabe als offen markieren" : "Teilaufgabe abhaken"}

@@ -5,19 +5,60 @@
 :root {
   --color-accent: #97373a;
   --color-accent-rgb: 151 55 58;
+  --color-accent-contrast: #f2f2f0;
   --color-bg-from: #494949;
+  --color-bg-from-rgb: 73 73 73;
   --color-bg-via: #323232;
+  --color-bg-via-rgb: 50 50 50;
   --color-bg-to: #181818;
+  --color-bg-to-rgb: 24 24 24;
   --color-container-from: #cbcbcb;
   --color-container-via: #5a5a5a;
   --color-container-to: #454545;
   --color-ink: #f2f2f0;
+  --color-ink-rgb: 242 242 240;
   --color-muted: #a4a4a1;
+  --color-muted-rgb: 164 164 161;
   --color-subtle: #929297;
+  --color-subtle-rgb: 146 146 151;
   --color-inverse: #151517;
+  --color-inverse-rgb: 21 21 23;
+  --color-line-rgb: 242 242 240;
+  --color-highlight-rgb: 242 242 240;
+  --color-shadow-rgb: 0 0 0;
+  --shadow-panel: inset 2px 2px 3px rgb(255 255 255 / 0.07), inset -2px -2px 4px rgb(0 0 0 / 0.38), inset -16px -16px 34px rgb(0 0 0 / 0.10), 0 24px 70px rgb(0 0 0 / 0.28);
+  --shadow-card: inset 2px 2px 3px rgb(255 255 255 / 0.07), inset -2px -2px 4px rgb(0 0 0 / 0.34), inset -12px -12px 28px rgb(0 0 0 / 0.09), 0 16px 44px rgb(0 0 0 / 0.22);
+  --shadow-inset: inset 1px 1px 2px rgb(255 255 255 / 0.07), inset -2px -2px 4px rgb(0 0 0 / 0.42);
   color-scheme: dark;
   font-family: Inter, "Helvetica Neue", Arial, ui-sans-serif, system-ui, sans-serif;
   background: var(--color-bg-to);
+}
+
+:root[data-theme="light"] {
+  --color-bg-from: #ffffff;
+  --color-bg-from-rgb: 255 255 255;
+  --color-bg-via: #e4e4e7;
+  --color-bg-via-rgb: 228 228 231;
+  --color-bg-to: #c8c8cc;
+  --color-bg-to-rgb: 200 200 204;
+  --color-container-from: #ffffff;
+  --color-container-via: #e6e6e9;
+  --color-container-to: #cdcdd1;
+  --color-ink: #151517;
+  --color-ink-rgb: 21 21 23;
+  --color-muted: #545459;
+  --color-muted-rgb: 84 84 89;
+  --color-subtle: #6d6d73;
+  --color-subtle-rgb: 109 109 115;
+  --color-inverse: #f7f7f5;
+  --color-inverse-rgb: 247 247 245;
+  --color-line-rgb: 21 21 23;
+  --color-highlight-rgb: 255 255 255;
+  --color-shadow-rgb: 58 58 64;
+  --shadow-panel: inset 2px 2px 4px rgb(255 255 255 / 0.9), inset -2px -2px 5px rgb(58 58 64 / 0.16), inset -14px -14px 30px rgb(58 58 64 / 0.04), 0 24px 70px rgb(58 58 64 / 0.16);
+  --shadow-card: inset 2px 2px 4px rgb(255 255 255 / 0.82), inset -2px -2px 5px rgb(58 58 64 / 0.14), inset -12px -12px 26px rgb(58 58 64 / 0.04), 0 16px 44px rgb(58 58 64 / 0.13);
+  --shadow-inset: inset 1px 1px 2px rgb(255 255 255 / 0.92), inset -2px -2px 4px rgb(58 58 64 / 0.18);
+  color-scheme: light;
 }
 
 * {
@@ -75,7 +116,7 @@ select:focus-visible {
 
 ::selection {
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-accent-contrast);
 }
 
 .time-input {
@@ -162,28 +203,28 @@ select:focus-visible {
 }
 
 .empty-depth-frame {
-  border: 1px dashed rgb(242 242 240 / 0.22);
-  background-color: rgb(24 24 24 / 0.45);
+  border: 1px dashed rgb(var(--color-line-rgb) / 0.22);
+  background-color: rgb(var(--color-bg-to-rgb) / 0.45);
   background-image: linear-gradient(
     145deg,
-    rgb(73 73 73 / 0.2) 0%,
-    rgb(50 50 50 / 0.12) 42%,
-    rgb(24 24 24 / 0.28) 100%
+    rgb(var(--color-bg-from-rgb) / 0.2) 0%,
+    rgb(var(--color-bg-via-rgb) / 0.12) 42%,
+    rgb(var(--color-bg-to-rgb) / 0.28) 100%
   );
   box-shadow:
-    inset 2px 2px 3px rgb(242 242 240 / 0.04),
-    inset -3px -3px 8px rgb(0 0 0 / 0.28),
-    0 12px 34px rgb(0 0 0 / 0.12);
+    inset 2px 2px 3px rgb(var(--color-highlight-rgb) / 0.08),
+    inset -3px -3px 8px rgb(var(--color-shadow-rgb) / 0.2),
+    0 12px 34px rgb(var(--color-shadow-rgb) / 0.12);
 }
 
 .flat-dashed-frame {
-  border: 2px dashed rgb(242 242 240 / 0.28);
+  border: 2px dashed rgb(var(--color-line-rgb) / 0.28);
   background: transparent;
   box-shadow: none;
 }
 
 .daily-review-notice {
-  background-color: rgb(24 24 24 / 0.88);
+  background-color: rgb(var(--color-bg-to-rgb) / 0.88);
   background-image: radial-gradient(
     120% 180% at 0% 50%,
     rgb(var(--color-accent-rgb) / 0.26) 0%,
@@ -191,8 +232,8 @@ select:focus-visible {
     transparent 78%
   );
   box-shadow:
-    inset 1px 1px 2px rgb(242 242 240 / 0.06),
-    inset -2px -2px 5px rgb(0 0 0 / 0.34),
+    inset 1px 1px 2px rgb(var(--color-highlight-rgb) / 0.1),
+    inset -2px -2px 5px rgb(var(--color-shadow-rgb) / 0.24),
     0 10px 28px rgb(var(--color-accent-rgb) / 0.1);
 }
 
@@ -200,8 +241,8 @@ select:focus-visible {
   background-image: linear-gradient(
     to right,
     transparent,
-    rgb(242 242 240 / 0.12) 16%,
-    rgb(242 242 240 / 0.12) 84%,
+    rgb(var(--color-line-rgb) / 0.12) 16%,
+    rgb(var(--color-line-rgb) / 0.12) 84%,
     transparent
   );
   background-position: bottom;

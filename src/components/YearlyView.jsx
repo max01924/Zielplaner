@@ -65,7 +65,7 @@ export default function YearlyView({ goals, monthlyGoals, selectedDate, onDateCh
               goal={goal}
               periodLabel="Jahresziel"
               children={monthlyGoals.filter((child) => child.parentGoalId === goal.id)}
-              childLabel="Monatsziele"
+              childLabel="Monatsprioritäten"
               implementationValue={(() => {
                 const children = monthlyGoals.filter((child) => child.parentGoalId === goal.id);
                 return children.length

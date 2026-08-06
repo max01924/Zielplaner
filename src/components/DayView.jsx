@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import HourSlot from "./HourSlot.jsx";
 import { addDays, formatFullDate, formatWeekday } from "../utils/date.js";
@@ -9,7 +9,7 @@ import TaskBacklog from "./TaskBacklog.jsx";
 import TimeInput from "./TimeInput.jsx";
 import DailyReview from "./DailyReview.jsx";
 
-export default function DayView({ selectedDate, onDateChange, tasks, priorities, parentPrefill, review, canReview, onNavigateParent, onAddTask, onToggleTask, onToggleFocus, onUpdateTask, onDeleteTask, onSaveReview }) {
+export default function DayView({ selectedDate, onDateChange, tasks, priorities, parentPrefill, review, canReview, carryOverCount, onNavigateParent, onAddTask, onCarryOverPreviousTasks, onToggleTask, onToggleFocus, onUpdateTask, onDeleteTask, onSaveReview }) {
   const [time, setTime] = useState("");
   const [text, setText] = useState("");
   const [weeklyPriorityId, setWeeklyPriorityId] = useState(parentPrefill);
@@ -82,12 +82,21 @@ export default function DayView({ selectedDate, onDateChange, tasks, priorities,
       />
 
       <form onSubmit={submit} className="bg-depth-panel rounded-panel p-5 shadow-card sm:p-6">
-        <div className="mb-5 flex items-end justify-between gap-4">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-1 text-[10px] font-bold uppercase text-subtle">Schnellerfassung</p>
             <p className="text-base font-black uppercase text-ink">Aufgabe hinzufügen</p>
           </div>
-          <span className="h-2 w-2 rounded-full bg-accent" />
+          {carryOverCount ? (
+            <button
+              type="button"
+              onClick={onCarryOverPreviousTasks}
+              className="daily-review-notice inline-flex min-h-11 max-w-[260px] items-center gap-2 rounded-control px-4 text-left text-xs font-black text-ink transition hover:brightness-125"
+            >
+              <ArrowRight className="h-4 w-4 shrink-0 text-accent" />
+              Aufgaben vom Vortag übernehmen
+            </button>
+          ) : <span className="h-2 w-2 rounded-full bg-accent" />}
         </div>
         <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)_minmax(220px,0.7fr)_auto] lg:items-end">
           <label>
@@ -110,7 +119,7 @@ export default function DayView({ selectedDate, onDateChange, tasks, priorities,
           <ParentSelect value={weeklyPriorityId} onChange={setWeeklyPriorityId} options={priorities} label="Wochenpriorität" />
           <button
             type="submit"
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-ink shadow-inset transition hover:brightness-110"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-accent-contrast shadow-inset transition hover:brightness-110"
           >
             <Plus className="h-4 w-4" />
             Hinzufügen

@@ -47,7 +47,7 @@ export default function SyncButton({ onSynced }) {
       ) : null}
 
       {error ? (
-        <p className="max-w-[260px] rounded-control bg-accent px-2 py-1 text-xs font-semibold text-ink shadow-inset">
+        <p className="max-w-[260px] rounded-control bg-accent px-2 py-1 text-xs font-semibold text-accent-contrast shadow-inset">
           {error}
         </p>
       ) : null}

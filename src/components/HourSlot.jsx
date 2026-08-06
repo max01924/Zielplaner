@@ -34,7 +34,7 @@ export default function HourSlot({ task, priorities, parent, onNavigateParent, o
             onClick={onToggle}
             className={`grid h-6 w-6 shrink-0 self-center place-items-center rounded-lg transition ${
               task.done
-                ? "bg-accent text-ink"
+                ? "bg-accent text-accent-contrast"
                 : "bg-canvas-deep text-transparent hover:bg-surface-hover"
             }`}
             aria-label={task.done ? "Aufgabe als offen markieren" : "Aufgabe abhaken"}

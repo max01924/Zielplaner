@@ -61,6 +61,27 @@ export function isoWeekNumber(date) {
   return 1 + Math.round((target - firstWeekStart) / 604_800_000);
 }
 
+export function toIsoWeekInputValue(dateKey) {
+  if (!dateKey) return "";
+  const date = dateFromKey(dateKey);
+  if (Number.isNaN(date.getTime())) return "";
+  const thursday = startOfIsoWeek(date);
+  thursday.setDate(thursday.getDate() + 3);
+  return `${thursday.getFullYear()}-W${String(isoWeekNumber(date)).padStart(2, "0")}`;
+}
+
+export function dateKeyFromIsoWeek(value) {
+  if (!value) return null;
+  const match = /^(\d{4})-W(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+  if (week < 1 || week > 53) return null;
+  const firstWeekStart = startOfIsoWeek(new Date(year, 0, 4, 12));
+  const weekStart = addWeeks(firstWeekStart, week - 1);
+  return toIsoWeekInputValue(toDateKey(weekStart)) === value ? toDateKey(weekStart) : null;
+}
+
 export function addMonths(date, amount) {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
 }

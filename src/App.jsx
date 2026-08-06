@@ -3,14 +3,17 @@ import { api } from "./api.js";
 import DayView from "./components/DayView.jsx";
 import HabitsView from "./components/HabitsView.jsx";
 import MonthlyView from "./components/MonthlyView.jsx";
+import SettingsDialog from "./components/SettingsDialog.jsx";
 import SyncButton from "./components/SyncButton.jsx";
 import TabNav from "./components/TabNav.jsx";
 import WeeklyView from "./components/WeeklyView.jsx";
 import YearlyView from "./components/YearlyView.jsx";
-import { dateFromKey, startOfIsoWeek, toDateKey, toMonthKey } from "./utils/date.js";
+import { addDays, dateFromKey, startOfIsoWeek, toDateKey, toMonthKey } from "./utils/date.js";
 import { canFillDailyReview, pendingDailyReviewDate } from "./utils/dailyReview.js";
 import { canFillWeeklyReview, pendingWeeklyReviewWeek } from "./utils/weeklyReview.js";
-import { MessageSquareText, Repeat2, Target } from "lucide-react";
+import { reviewForPeriod } from "./utils/reviewQuestions.js";
+import { applyAppearance, loadSettings, storeSettings } from "./utils/settings.js";
+import { MessageSquareText, Repeat2, Settings, Target } from "lucide-react";
 
 const modes = [
   { id: "goals", label: "Zielplaner", Icon: Target },
@@ -113,7 +116,7 @@ function ModeToggle({ activeMode, onChange }) {
             onClick={() => onChange(id)}
             className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-[24px] px-4 text-xs font-black uppercase transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink/70 sm:text-sm ${
               isActive
-                ? "bg-accent text-ink shadow-inset"
+                ? "bg-accent text-accent-contrast shadow-inset"
                 : "text-muted hover:bg-surface-hover hover:text-ink"
             }`}
             aria-pressed={isActive}
@@ -128,8 +131,10 @@ function ModeToggle({ activeMode, onChange }) {
 }
 
 export default function App() {
-  const [activeMode, setActiveMode] = useState("goals");
-  const [activeTab, setActiveTab] = useState("daily");
+  const [settings, setSettings] = useState(loadSettings);
+  const [activeMode, setActiveMode] = useState(settings.startMode);
+  const [activeTab, setActiveTab] = useState(settings.startTab);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [planningDate, setPlanningDate] = useState(() => new Date());
   const [habitMonthDate, setHabitMonthDate] = useState(() => new Date());
   const [dailyTasks, setDailyTasks] = useState({});
@@ -150,11 +155,27 @@ export default function App() {
   const [error, setError] = useState("");
   const selectedDateKey = toDateKey(planningDate);
   const selectedTasks = dailyTasks[selectedDateKey] ?? [];
-  const selectedReview = dailyReviews.find((review) => review.dateKey === selectedDateKey) ?? null;
+  const selectedReview = useMemo(
+    () => reviewForPeriod(dailyReviews, selectedDateKey, "dateKey"),
+    [dailyReviews, selectedDateKey]
+  );
+  const previousDateKey = toDateKey(addDays(planningDate, -1));
+  const previousReview = dailyReviews.find((review) => review.dateKey === previousDateKey) ?? null;
+  const carryOverTasks = selectedDateKey === toDateKey(now) && previousReview?.completedAt
+    ? (dailyTasks[previousDateKey] ?? []).filter((task) => !task.done)
+    : [];
   const pendingReviewDate = pendingDailyReviewDate(dailyReviews, now);
   const pendingWeeklyReviewKey = pendingWeeklyReviewWeek(weeklyReviews, now);
   const habitMonthKey = toMonthKey(habitMonthDate);
   const weekKey = toDateKey(startOfIsoWeek(planningDate));
+  const selectedWeeklyReview = useMemo(
+    () => reviewForPeriod(weeklyReviews, weekKey, "weekKey"),
+    [weekKey, weeklyReviews]
+  );
+  const visibleWeeklyData = useMemo(
+    () => ({ ...weeklyData, review: selectedWeeklyReview }),
+    [selectedWeeklyReview, weeklyData]
+  );
   const monthKey = toMonthKey(planningDate);
   const yearKey = String(planningDate.getFullYear());
   const visibleMonthlyGoals = monthlyGoals.filter((goal) => goal.periodKey === monthKey);
@@ -251,9 +272,10 @@ export default function App() {
   const runMutation = useCallback(async (mutation) => {
     try {
       setError("");
-      await mutation();
+      return await mutation();
     } catch (mutationError) {
       setError(mutationError.message);
+      return false;
     }
   }, []);
 
@@ -266,6 +288,21 @@ export default function App() {
           [selectedDateKey]: [...(current[selectedDateKey] ?? []), createdTask],
         }));
         setDailyParentPrefill(null);
+      });
+    },
+    onCarryOverPreviousTasks() {
+      return runMutation(async () => {
+        const result = await api.carryOverDailyTasks(previousDateKey, selectedDateKey);
+        const movedTasks = result.tasks ?? [];
+        const movedIds = new Set(movedTasks.map((task) => task.id));
+        setDailyTasks((current) => ({
+          ...current,
+          [previousDateKey]: (current[previousDateKey] ?? []).filter((task) => !movedIds.has(task.id)),
+          [selectedDateKey]: [
+            ...(current[selectedDateKey] ?? []).filter((task) => !movedIds.has(task.id)),
+            ...movedTasks,
+          ],
+        }));
       });
     },
     onToggleTask(taskId) {
@@ -352,6 +389,51 @@ export default function App() {
     [loadState, runMutation]
   );
 
+  function toggleMonthlyWeeklyPriority(priority) {
+    return runMutation(async () => {
+      const savedPriority = await api.updateWeeklyPriority(priority.id, {
+        done: !priority.done,
+      });
+      setWeeklyPriorities((current) => current.map((item) => (
+        item.id === savedPriority.id ? savedPriority : item
+      )));
+      setWeeklyData((current) => current ? {
+        ...current,
+        priorities: (current.priorities ?? []).map((item) => (
+          item.id === savedPriority.id ? savedPriority : item
+        )),
+      } : current);
+    });
+  }
+
+  function createMonthlyWeeklyPriority(goalId, draft) {
+    return runMutation(async () => {
+      const priority = await api.createMonthlyWeeklyPriority(goalId, draft);
+      setWeeklyPriorities((current) => [...current, priority]);
+      if (priority.weekKey === weekKey) {
+        setWeeklyData((current) => current ? {
+          ...current,
+          priorities: [...(current.priorities ?? []), priority],
+        } : current);
+      }
+    });
+  }
+
+  function updateMonthlyWeeklyPriority(priorityId, patch) {
+    return runMutation(async () => {
+      await api.updateWeeklyPriority(priorityId, patch);
+      await loadState();
+      return true;
+    });
+  }
+
+  function deleteMonthlyWeeklyPriority(priorityId) {
+    return runMutation(async () => {
+      await api.deleteWeeklyPriority(priorityId);
+      await loadState();
+    });
+  }
+
   useEffect(() => {
     if (activeMode !== "goals" || activeTab !== "weekly" || isLoading) {
       return;
@@ -389,6 +471,13 @@ export default function App() {
       return runMutation(async () => {
         await api.deleteWeeklyPriority(priorityId);
         await loadState();
+      });
+    },
+    onAssignPriority(priorityId) {
+      return runMutation(async () => {
+        const priority = await api.updateWeeklyPriority(priorityId, { weekKey });
+        await loadState();
+        return priority;
       });
     },
     onToggleTask(task) {
@@ -476,22 +565,19 @@ export default function App() {
     setActiveTab("monthly");
   }
 
-  function deriveWeeklyPriority(monthlyGoal) {
-    const now = new Date();
-    const target = toMonthKey(now) === monthlyGoal.periodKey
-      ? now
-      : dateFromKey(`${monthlyGoal.periodKey}-01`);
-    setPlanningDate(startOfIsoWeek(target));
-    setWeeklyParentPrefill(monthlyGoal.id);
-    setActiveTab("weekly");
-  }
-
   function deriveDailyTask(priority) {
     const now = new Date();
     const currentWeekKey = toDateKey(startOfIsoWeek(now));
     setPlanningDate(currentWeekKey === priority.weekKey ? now : dateFromKey(priority.weekKey));
     setDailyParentPrefill(priority.id);
     setActiveTab("daily");
+  }
+
+  function saveSettings(nextSettings) {
+    const savedSettings = storeSettings(nextSettings);
+    applyAppearance(savedSettings);
+    setSettings(savedSettings);
+    setSettingsOpen(false);
   }
 
   const habitHandlers = {
@@ -530,11 +616,22 @@ export default function App() {
       <div className="mx-auto w-full max-w-7xl">
         <header className="mb-10">
           <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
-            <div className="flex items-center gap-3 lg:justify-self-start" aria-label="Zielplaner">
-              <span className="h-10 w-1 rounded-full bg-accent shadow-[0_0_24px_rgba(151,55,58,0.35)]" />
-              <div>
-                <p className="text-sm font-black uppercase text-ink">Zielplaner</p>
-                <p className="mt-0.5 text-[10px] font-semibold uppercase text-subtle">Planungssystem</p>
+            <div className="flex items-center gap-3 lg:justify-self-start">
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="bg-depth-inset grid h-10 w-10 shrink-0 place-items-center rounded-control text-muted shadow-inset transition hover:text-ink hover:brightness-125"
+                aria-label="Einstellungen öffnen"
+                title="Einstellungen"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+              <div className="flex items-center gap-3" aria-label="Zielplaner">
+                <span className="h-10 w-1 rounded-full bg-accent shadow-[0_0_24px_rgb(var(--color-accent-rgb)/0.35)]" />
+                <div>
+                  <p className="text-sm font-black uppercase text-ink">Zielplaner</p>
+                  <p className="mt-0.5 text-[10px] font-semibold uppercase text-subtle">Planungssystem</p>
+                </div>
               </div>
             </div>
 
@@ -574,7 +671,7 @@ export default function App() {
           ) : null}
 
           {error ? (
-            <div className="mt-5 max-w-xl rounded-control bg-accent px-4 py-3 text-sm font-semibold text-ink shadow-card">
+            <div className="mt-5 max-w-xl rounded-control bg-accent px-4 py-3 text-sm font-semibold text-accent-contrast shadow-card">
               {error}
             </div>
           ) : null}
@@ -595,6 +692,7 @@ export default function App() {
             canReview={canFillDailyReview(selectedDateKey, now)}
             priorities={weekPriorities}
             parentPrefill={dailyParentPrefill}
+            carryOverCount={carryOverTasks.length}
             onNavigateParent={openWeeklyParent}
             {...dailyHandlers}
           />
@@ -610,14 +708,19 @@ export default function App() {
             parentPrefill={monthlyParentPrefill}
             onNavigateParent={openYearlyParent}
             onNavigateChild={openWeeklyParent}
-            onDeriveChild={deriveWeeklyPriority}
+            onCreateWeeklyPriority={createMonthlyWeeklyPriority}
+            onToggleWeeklyPriority={toggleMonthlyWeeklyPriority}
+            onUpdateWeeklyPriority={updateMonthlyWeeklyPriority}
+            onDeleteWeeklyPriority={deleteMonthlyWeeklyPriority}
             {...monthlyHandlers}
           />
         ) : null}
 
         {!isLoading && activeMode === "goals" && activeTab === "weekly" ? (
           <WeeklyView
-            data={weeklyData}
+            data={visibleWeeklyData}
+            unassignedPriorities={weeklyPriorities.filter((priority) => !priority.weekKey)}
+            allMonthlyGoals={monthlyGoals}
             selectedWeek={startOfIsoWeek(planningDate)}
             onWeekChange={setPlanningDate}
             parentPrefill={weeklyParentPrefill}
@@ -647,6 +750,14 @@ export default function App() {
             monthDate={habitMonthDate}
             onMonthChange={setHabitMonthDate}
             {...habitHandlers}
+          />
+        ) : null}
+
+        {settingsOpen ? (
+          <SettingsDialog
+            settings={settings}
+            onSave={saveSettings}
+            onClose={() => setSettingsOpen(false)}
           />
         ) : null}
       </div>

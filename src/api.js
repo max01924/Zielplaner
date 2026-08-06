@@ -48,6 +48,12 @@ export const api = {
       body: JSON.stringify(priority),
     });
   },
+  createMonthlyWeeklyPriority(goalId, priority) {
+    return request(`/monthly-goals/${goalId}/weekly-priorities`, {
+      method: "POST",
+      body: JSON.stringify(priority),
+    });
+  },
   updateWeeklyPriority(id, patch) {
     return request(`/weekly-priorities/${id}`, {
       method: "PATCH",
@@ -82,6 +88,12 @@ export const api = {
     return request("/daily-tasks", {
       method: "POST",
       body: JSON.stringify(task),
+    });
+  },
+  carryOverDailyTasks(fromDateKey, toDateKey) {
+    return request("/daily-tasks/carry-over", {
+      method: "POST",
+      body: JSON.stringify({ fromDateKey, toDateKey }),
     });
   },
   updateDailyTask(id, patch) {

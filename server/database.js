@@ -153,6 +153,95 @@ function addColumnIfMissing(tableName, columnName, definition) {
   }
 }
 
+function makeWeeklyPriorityWeekOptional() {
+  const weekColumn = db
+    .prepare("PRAGMA table_info(weekly_priorities)")
+    .all()
+    .find((column) => column.name === "week_key");
+  if (!weekColumn?.notnull) return;
+
+  db.exec("PRAGMA foreign_keys = OFF");
+  try {
+    db.exec(`
+      BEGIN;
+      DROP TABLE IF EXISTS weekly_priorities_migrated;
+      CREATE TABLE weekly_priorities_migrated (
+        id TEXT PRIMARY KEY,
+        week_key TEXT,
+        text TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        monthly_goal_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (week_key) REFERENCES weekly_plans(week_key) ON DELETE CASCADE,
+        FOREIGN KEY (monthly_goal_id) REFERENCES goals(id) ON DELETE SET NULL
+      );
+      INSERT INTO weekly_priorities_migrated
+        (id, week_key, text, done, monthly_goal_id, created_at, updated_at)
+      SELECT id, week_key, text, done, monthly_goal_id, created_at, updated_at
+      FROM weekly_priorities;
+      DROP TABLE weekly_priorities;
+      ALTER TABLE weekly_priorities_migrated RENAME TO weekly_priorities;
+      COMMIT;
+    `);
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // The migration may fail before the transaction starts.
+    }
+    throw error;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+function migrateMonthlyChecklistToWeeklyPriorities() {
+  const items = db.prepare(`
+    SELECT checklist_items.id, checklist_items.goal_id, checklist_items.text,
+      checklist_items.done, checklist_items.created_at, checklist_items.updated_at
+    FROM checklist_items
+    JOIN goals ON goals.id = checklist_items.goal_id
+    WHERE goals.period = 'monthly'
+  `).all();
+  if (!items.length) return;
+
+  const insertPriority = db.prepare(`
+    INSERT INTO weekly_priorities
+      (id, week_key, text, done, monthly_goal_id, created_at, updated_at)
+    VALUES (?, NULL, ?, ?, ?, ?, ?)
+  `);
+  const insertTombstone = db.prepare(`
+    INSERT INTO sync_tombstones (entity_type, entity_id, deleted_at)
+    VALUES ('checklist_item', ?, ?)
+    ON CONFLICT(entity_type, entity_id) DO UPDATE SET deleted_at = excluded.deleted_at
+    WHERE excluded.deleted_at > sync_tombstones.deleted_at
+  `);
+
+  db.exec("BEGIN");
+  try {
+    for (const item of items) {
+      const idExists = db.prepare("SELECT 1 FROM weekly_priorities WHERE id = ?").get(item.id);
+      const priorityId = idExists ? randomUUID() : item.id;
+      const timestamp = item.updated_at || nowIso();
+      insertPriority.run(
+        priorityId,
+        item.text,
+        item.done ? 1 : 0,
+        item.goal_id,
+        item.created_at || timestamp,
+        timestamp
+      );
+      insertTombstone.run(item.id, timestamp);
+      db.prepare("DELETE FROM checklist_items WHERE id = ?").run(item.id);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 function normalizeMissingTimestamps(tableName) {
   const timestamp = nowIso();
   db.prepare(`
@@ -187,6 +276,7 @@ function migrateSchema() {
       text TEXT NOT NULL,
       done INTEGER NOT NULL DEFAULT 0,
       is_daily_focus INTEGER NOT NULL DEFAULT 0,
+      postponed_from_date TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -196,6 +286,7 @@ function migrateSchema() {
       positive TEXT NOT NULL DEFAULT '',
       improvement TEXT NOT NULL DEFAULT '',
       custom_questions TEXT NOT NULL DEFAULT '[]',
+      question_set TEXT,
       completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -249,6 +340,7 @@ function migrateSchema() {
       positive TEXT NOT NULL DEFAULT '',
       improvement TEXT NOT NULL DEFAULT '',
       custom_questions TEXT NOT NULL DEFAULT '[]',
+      question_set TEXT,
       completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -256,7 +348,7 @@ function migrateSchema() {
 
     CREATE TABLE IF NOT EXISTS weekly_priorities (
       id TEXT PRIMARY KEY,
-      week_key TEXT NOT NULL,
+      week_key TEXT,
       text TEXT NOT NULL,
       done INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -274,6 +366,8 @@ function migrateSchema() {
 
   addColumnIfMissing("daily_tasks", "updated_at", "TEXT");
   addColumnIfMissing("daily_tasks", "is_daily_focus", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("daily_tasks", "postponed_from_date", "TEXT");
+  addColumnIfMissing("daily_reviews", "question_set", "TEXT");
   addColumnIfMissing(
     "daily_tasks",
     "weekly_priority_id",
@@ -298,6 +392,7 @@ function migrateSchema() {
   addColumnIfMissing("weekly_plans", "positive", "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing("weekly_plans", "improvement", "TEXT NOT NULL DEFAULT ''");
   addColumnIfMissing("weekly_plans", "custom_questions", "TEXT NOT NULL DEFAULT '[]'");
+  addColumnIfMissing("weekly_plans", "question_set", "TEXT");
   addColumnIfMissing("weekly_plans", "completed_at", "TEXT");
   addColumnIfMissing("weekly_priorities", "updated_at", "TEXT");
   addColumnIfMissing(
@@ -305,6 +400,8 @@ function migrateSchema() {
     "monthly_goal_id",
     "TEXT REFERENCES goals(id) ON DELETE SET NULL"
   );
+  makeWeeklyPriorityWeekOptional();
+  migrateMonthlyChecklistToWeeklyPriorities();
 
   db.prepare(`
     UPDATE habits
@@ -379,13 +476,15 @@ function migrateSchema() {
 migrateSchema();
 
 const getDailyTaskStatement = db.prepare(`
-  SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id, updated_at
+  SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id,
+    postponed_from_date, updated_at
   FROM daily_tasks
   WHERE id = ?
 `);
 
 const getDailyReviewStatement = db.prepare(`
-  SELECT date_key, positive, improvement, custom_questions, completed_at, created_at, updated_at
+  SELECT date_key, positive, improvement, custom_questions, question_set,
+    completed_at, created_at, updated_at
   FROM daily_reviews
   WHERE date_key = ?
 `);
@@ -416,7 +515,7 @@ const getHabitCompletionStatement = db.prepare(`
 `);
 
 const getWeeklyPlanStatement = db.prepare(`
-  SELECT week_key, reflection, positive, improvement, custom_questions,
+  SELECT week_key, reflection, positive, improvement, custom_questions, question_set,
     completed_at, created_at, updated_at
   FROM weekly_plans
   WHERE week_key = ?
@@ -437,6 +536,7 @@ function mapDailyTask(row) {
     done: Boolean(row.done),
     isDailyFocus: Boolean(row.is_daily_focus),
     weeklyPriorityId: row.weekly_priority_id ?? null,
+    postponedFromDate: row.postponed_from_date ?? null,
   };
 }
 
@@ -459,12 +559,59 @@ function normalizeCustomQuestions(value) {
     }));
 }
 
+function normalizeReviewQuestions(value) {
+  let questions = value;
+  if (typeof value === "string") {
+    try {
+      questions = JSON.parse(value);
+    } catch {
+      questions = [];
+    }
+  }
+  if (!Array.isArray(questions)) return [];
+  return questions
+    .filter((item) => item && typeof item.question === "string" && item.question.trim())
+    .map((item) => ({
+      id: typeof item.id === "string" && item.id ? item.id : randomUUID(),
+      kind: item.kind === "positive" || item.kind === "improvement" ? item.kind : "custom",
+      question: item.question.trim(),
+      answer: typeof item.answer === "string" ? item.answer : "",
+    }));
+}
+
+function legacyReviewQuestions(row, customQuestions = normalizeCustomQuestions(row?.custom_questions)) {
+  return [
+    {
+      id: "positive",
+      kind: "positive",
+      question: "Was war positiv?",
+      answer: row?.positive ?? "",
+    },
+    {
+      id: "improvement",
+      kind: "improvement",
+      question: "Was muss verbessert werden?",
+      answer: row?.improvement ?? "",
+    },
+    ...customQuestions.map((item) => ({ ...item, kind: "custom" })),
+  ];
+}
+
+function reviewQuestions(row, customQuestions) {
+  if (row?.question_set !== null && row?.question_set !== undefined) {
+    return normalizeReviewQuestions(row.question_set);
+  }
+  return legacyReviewQuestions(row, customQuestions);
+}
+
 function mapDailyReview(row) {
+  const customQuestions = normalizeCustomQuestions(row.custom_questions);
   return {
     dateKey: row.date_key,
     positive: row.positive ?? "",
     improvement: row.improvement ?? "",
-    customQuestions: normalizeCustomQuestions(row.custom_questions),
+    customQuestions,
+    questions: reviewQuestions(row, customQuestions),
     completedAt: row.completed_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -483,11 +630,20 @@ function weeklyReviewQuestions(row) {
 
 function mapWeeklyReview(row) {
   if (!row) return null;
+  const customQuestions = weeklyReviewQuestions(row);
+  const hasReview = row.question_set !== null
+    || Boolean(row.positive?.trim())
+    || Boolean(row.improvement?.trim())
+    || Boolean(row.reflection?.trim())
+    || customQuestions.length > 0
+    || Boolean(row.completed_at);
   return {
     weekKey: row.week_key,
     positive: row.positive ?? "",
     improvement: row.improvement ?? "",
-    customQuestions: weeklyReviewQuestions(row),
+    customQuestions,
+    questions: reviewQuestions(row, customQuestions),
+    hasReview,
     completedAt: row.completed_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -550,7 +706,7 @@ function mapHabit(row, completions = []) {
 function mapWeeklyPriority(row) {
   return {
     id: row.id,
-    weekKey: row.week_key,
+    weekKey: row.week_key ?? null,
     text: row.text,
     done: Boolean(row.done),
     monthlyGoalId: row.monthly_goal_id ?? null,
@@ -634,7 +790,7 @@ function validatePriorityParent(weekKey, monthlyGoalId) {
   if (!parent || parent.period !== "monthly") {
     relationError("Das ausgewählte Monatsziel wurde nicht gefunden.");
   }
-  if (!weekMonthKeys(weekKey).includes(parent.period_key)) {
+  if (weekKey && !weekMonthKeys(weekKey).includes(parent.period_key)) {
     relationError("Das Monatsziel liegt außerhalb der ausgewählten ISO-Woche.");
   }
   return parentId;
@@ -799,7 +955,8 @@ export function getState() {
   const dailyTasks = {};
   const taskRows = db
     .prepare(`
-      SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id, created_at, updated_at
+      SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id,
+        postponed_from_date, created_at, updated_at
       FROM daily_tasks
       ORDER BY date_key ASC, time ASC, created_at ASC
     `)
@@ -823,7 +980,8 @@ export function getState() {
     dailyTasks,
     dailyReviews: db
       .prepare(`
-        SELECT date_key, positive, improvement, custom_questions, completed_at, created_at, updated_at
+        SELECT date_key, positive, improvement, custom_questions, question_set,
+          completed_at, created_at, updated_at
         FROM daily_reviews
         ORDER BY date_key DESC
       `)
@@ -839,7 +997,7 @@ export function getState() {
       .map(mapWeeklyPriority),
     weeklyReviews: db
       .prepare(`
-        SELECT week_key, reflection, positive, improvement, custom_questions,
+        SELECT week_key, reflection, positive, improvement, custom_questions, question_set,
           completed_at, created_at, updated_at
         FROM weekly_plans
         ORDER BY week_key DESC
@@ -862,7 +1020,8 @@ export function getWeeklyOverview(weekKey) {
   const previousWeekEnd = addDaysToDateKey(normalizedWeekKey, -1);
   const plan = getWeeklyPlanStatement.get(normalizedWeekKey);
   const taskStatement = db.prepare(`
-    SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id, updated_at
+    SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id,
+      postponed_from_date, updated_at
     FROM daily_tasks
     WHERE date_key BETWEEN ? AND ?
     ORDER BY date_key ASC, time ASC, created_at ASC
@@ -943,24 +1102,31 @@ export function getWeeklyOverview(weekKey) {
 }
 
 export function createWeeklyPriority({ weekKey, text, monthlyGoalId = null }) {
-  const normalizedWeekKey = startOfIsoWeekKey(weekKey);
-  if (!normalizedWeekKey) {
+  const normalizedWeekKey = weekKey ? startOfIsoWeekKey(weekKey) : null;
+  if (weekKey && !normalizedWeekKey) {
     return null;
   }
 
-  const count = db
-    .prepare("SELECT COUNT(*) AS count FROM weekly_priorities WHERE week_key = ?")
-    .get(normalizedWeekKey).count;
-  if (count >= 3) {
-    const error = new Error("Pro Woche sind maximal drei Prioritaeten moeglich.");
-    error.status = 409;
-    throw error;
+  if (normalizedWeekKey) {
+    const count = db
+      .prepare("SELECT COUNT(*) AS count FROM weekly_priorities WHERE week_key = ?")
+      .get(normalizedWeekKey).count;
+    if (count >= 3) {
+      const error = new Error("Pro Woche sind maximal drei Prioritaeten moeglich.");
+      error.status = 409;
+      throw error;
+    }
   }
 
   const id = randomUUID();
   const timestamp = nowIso();
   const parentId = validatePriorityParent(normalizedWeekKey, monthlyGoalId);
-  ensureWeeklyPlan(normalizedWeekKey, timestamp);
+  if (!normalizedWeekKey && !parentId) {
+    relationError("Eine unzugeordnete Wochenprioritaet benoetigt eine Monatsprioritaet.");
+  }
+  if (normalizedWeekKey) {
+    ensureWeeklyPlan(normalizedWeekKey, timestamp);
+  }
   db.prepare(`
     INSERT INTO weekly_priorities
       (id, week_key, text, done, monthly_goal_id, created_at, updated_at)
@@ -978,20 +1144,66 @@ export function updateWeeklyPriority(id, patch) {
   }
 
   const timestamp = nowIso();
+  const weekKey = hasOwn(patch, "weekKey")
+    ? (patch.weekKey ? startOfIsoWeekKey(patch.weekKey) : null)
+    : current.week_key;
+  if (hasOwn(patch, "weekKey") && patch.weekKey && !weekKey) {
+    relationError("Ungueltige ISO-Woche.");
+  }
   const parentId = hasOwn(patch, "monthlyGoalId")
-    ? validatePriorityParent(current.week_key, patch.monthlyGoalId)
-    : current.monthly_goal_id;
-  db.prepare(`
-    UPDATE weekly_priorities
-    SET text = ?, done = ?, monthly_goal_id = ?, updated_at = ?
-    WHERE id = ?
-  `).run(
-    patch.text ?? current.text,
-    typeof patch.done === "boolean" ? (patch.done ? 1 : 0) : current.done,
-    parentId,
-    timestamp,
-    id
-  );
+    ? validatePriorityParent(weekKey, patch.monthlyGoalId)
+    : validatePriorityParent(weekKey, current.monthly_goal_id);
+  if (!weekKey && !parentId) {
+    relationError("Eine unzugeordnete Wochenprioritaet benoetigt eine Monatsprioritaet.");
+  }
+  if (weekKey && weekKey !== current.week_key) {
+    const count = db
+      .prepare("SELECT COUNT(*) AS count FROM weekly_priorities WHERE week_key = ?")
+      .get(weekKey).count;
+    if (count >= 3) {
+      const error = new Error("Pro Woche sind maximal drei Prioritaeten moeglich.");
+      error.status = 409;
+      throw error;
+    }
+    ensureWeeklyPlan(weekKey, timestamp);
+  }
+  db.exec("BEGIN");
+  try {
+    db.prepare(`
+      UPDATE weekly_priorities
+      SET week_key = ?, text = ?, done = ?, monthly_goal_id = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      weekKey,
+      patch.text ?? current.text,
+      typeof patch.done === "boolean" ? (patch.done ? 1 : 0) : current.done,
+      parentId,
+      timestamp,
+      id
+    );
+
+    if (weekKey !== current.week_key) {
+      const linkedTasks = db.prepare(`
+        SELECT id, date_key
+        FROM daily_tasks
+        WHERE weekly_priority_id = ?
+      `).all(id);
+      const unlinkTask = db.prepare(`
+        UPDATE daily_tasks
+        SET weekly_priority_id = NULL, updated_at = ?
+        WHERE id = ?
+      `);
+      for (const task of linkedTasks) {
+        if (!weekKey || startOfIsoWeekKey(task.date_key) !== weekKey) {
+          unlinkTask.run(timestamp, task.id);
+        }
+      }
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
   notifyWrite();
 
   return mapWeeklyPriority(getWeeklyPriorityStatement.get(id));
@@ -1043,7 +1255,8 @@ export function updateWeeklyReflection(weekKey, reflection) {
 export function exportGoalsForSync() {
   const daily = db
     .prepare(`
-      SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id, created_at, updated_at
+      SELECT id, date_key, time, text, done, is_daily_focus, weekly_priority_id,
+        postponed_from_date, created_at, updated_at
       FROM daily_tasks
       ORDER BY date_key ASC, time ASC, created_at ASC
     `)
@@ -1056,6 +1269,7 @@ export function exportGoalsForSync() {
       done: Boolean(task.done),
       is_daily_focus: Boolean(task.is_daily_focus),
       weekly_priority_id: task.weekly_priority_id ?? null,
+      postponed_from_date: task.postponed_from_date ?? null,
       created_at: task.created_at,
       updated_at: task.updated_at,
     }));
@@ -1085,7 +1299,7 @@ export function exportGoalsForSync() {
   `);
   const weekly = db
     .prepare(`
-      SELECT week_key, reflection, positive, improvement, custom_questions,
+      SELECT week_key, reflection, positive, improvement, custom_questions, question_set,
         completed_at, created_at, updated_at
       FROM weekly_plans
       ORDER BY week_key ASC
@@ -1098,6 +1312,7 @@ export function exportGoalsForSync() {
       positive: plan.positive ?? "",
       improvement: plan.improvement ?? "",
       custom_questions: weeklyReviewQuestions(plan),
+      questions: reviewQuestions(plan, weeklyReviewQuestions(plan)),
       completed_at: plan.completed_at ?? null,
       priorities: weeklyPrioritiesStatement.all(plan.week_key).map((priority) => ({
         id: priority.id,
@@ -1111,18 +1326,28 @@ export function exportGoalsForSync() {
       updated_at: plan.updated_at,
     }));
 
+  const unassignedWeeklyPriorities = db
+    .prepare(`
+      SELECT id, text, done, monthly_goal_id, created_at, updated_at
+      FROM weekly_priorities
+      WHERE week_key IS NULL
+      ORDER BY created_at ASC, id ASC
+    `)
+    .all()
+    .map((priority) => ({
+      id: priority.id,
+      text: priority.text,
+      done: Boolean(priority.done),
+      monthly_goal_id: priority.monthly_goal_id,
+      created_at: priority.created_at,
+      updated_at: priority.updated_at,
+    }));
+
   for (const goal of goals) {
     const sharedGoal = {
       id: goal.id,
       title: goal.title,
       description: goal.description ?? "",
-      subtasks: subtasksStatement.all(goal.id).map((item) => ({
-        id: item.id,
-        text: item.text,
-        done: Boolean(item.done),
-        created_at: item.created_at,
-        updated_at: item.updated_at,
-      })),
       created_at: goal.created_at,
       updated_at: goal.updated_at,
     };
@@ -1137,6 +1362,13 @@ export function exportGoalsForSync() {
       yearly.push({
         ...sharedGoal,
         year: goal.period_key || currentPeriodKey("yearly"),
+        subtasks: subtasksStatement.all(goal.id).map((item) => ({
+          id: item.id,
+          text: item.text,
+          done: Boolean(item.done),
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+        })),
       });
     }
   }
@@ -1151,7 +1383,8 @@ export function exportGoalsForSync() {
 
   const dailyReviews = db
     .prepare(`
-      SELECT date_key, positive, improvement, custom_questions, completed_at, created_at, updated_at
+      SELECT date_key, positive, improvement, custom_questions, question_set,
+        completed_at, created_at, updated_at
       FROM daily_reviews
       ORDER BY date_key ASC
     `)
@@ -1161,12 +1394,21 @@ export function exportGoalsForSync() {
       positive: review.positive ?? "",
       improvement: review.improvement ?? "",
       custom_questions: normalizeCustomQuestions(review.custom_questions),
+      questions: reviewQuestions(review),
       completed_at: review.completed_at ?? null,
       created_at: review.created_at,
       updated_at: review.updated_at,
     }));
 
-  return { daily, daily_reviews: dailyReviews, weekly, monthly, yearly, deleted };
+  return {
+    daily,
+    daily_reviews: dailyReviews,
+    weekly,
+    unassigned_weekly_priorities: unassignedWeeklyPriorities,
+    monthly,
+    yearly,
+    deleted,
+  };
 }
 
 export function exportHabitsForSync() {
@@ -1210,6 +1452,9 @@ export function importGoalsFromSync(syncData) {
   const daily = Array.isArray(syncData?.daily) ? syncData.daily : [];
   const dailyReviews = Array.isArray(syncData?.daily_reviews) ? syncData.daily_reviews : [];
   const weekly = Array.isArray(syncData?.weekly) ? syncData.weekly : [];
+  const unassignedWeeklyPriorities = Array.isArray(syncData?.unassigned_weekly_priorities)
+    ? syncData.unassigned_weekly_priorities
+    : [];
   const monthly = Array.isArray(syncData?.monthly) ? syncData.monthly : [];
   const yearly = Array.isArray(syncData?.yearly) ? syncData.yearly : [];
   const deleted = Array.isArray(syncData?.deleted) ? syncData.deleted : [];
@@ -1218,6 +1463,7 @@ export function importGoalsFromSync(syncData) {
   try {
     pulled += importGoalsByPeriod("yearly", yearly);
     pulled += importGoalsByPeriod("monthly", monthly);
+    pulled += importUnassignedWeeklyPriorities(unassignedWeeklyPriorities);
     pulled += importWeeklyPlans(weekly);
     pulled += importDailyTasks(daily);
     pulled += importDailyReviews(dailyReviews);
@@ -1232,16 +1478,68 @@ export function importGoalsFromSync(syncData) {
   return pulled;
 }
 
+function importUnassignedWeeklyPriorities(priorities) {
+  let pulled = 0;
+  const insertPriority = db.prepare(`
+    INSERT INTO weekly_priorities
+      (id, week_key, text, done, monthly_goal_id, created_at, updated_at)
+    VALUES (?, NULL, ?, ?, ?, ?, ?)
+  `);
+  const updatePriority = db.prepare(`
+    UPDATE weekly_priorities
+    SET week_key = NULL, text = ?, done = ?, monthly_goal_id = ?, updated_at = ?
+    WHERE id = ?
+  `);
+
+  for (const priority of priorities) {
+    if (!priority?.id || typeof priority.text !== "string" || !priority.text.trim()) {
+      continue;
+    }
+    const updatedAt = priority.updated_at || nowIso();
+    const current = getWeeklyPriorityStatement.get(priority.id);
+    if (!liveEntryWins("weekly_priority", priority.id, updatedAt)) {
+      continue;
+    }
+    const parentId = safeRemoteRelation(
+      () => validatePriorityParent(null, priority.monthly_goal_id),
+      `unassigned weekly priority ${priority.id}`
+    );
+    const values = [
+      priority.text.trim(),
+      priority.done ? 1 : 0,
+      parentId,
+      updatedAt,
+    ];
+    if (!current) {
+      insertPriority.run(
+        priority.id,
+        priority.text.trim(),
+        priority.done ? 1 : 0,
+        parentId,
+        priority.created_at || updatedAt,
+        updatedAt
+      );
+      pulled += 1;
+    } else if (isJsonNewer(updatedAt, current.updated_at)) {
+      updatePriority.run(...values, priority.id);
+      pulled += 1;
+    }
+  }
+  return pulled;
+}
+
 function importDailyReviews(reviews) {
   let pulled = 0;
   const insertReview = db.prepare(`
     INSERT INTO daily_reviews
-      (date_key, positive, improvement, custom_questions, completed_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+      (date_key, positive, improvement, custom_questions, question_set,
+        completed_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const updateReview = db.prepare(`
     UPDATE daily_reviews
-    SET positive = ?, improvement = ?, custom_questions = ?, completed_at = ?, updated_at = ?
+    SET positive = ?, improvement = ?, custom_questions = ?, question_set = ?,
+      completed_at = ?, updated_at = ?
     WHERE date_key = ?
   `);
 
@@ -1253,16 +1551,28 @@ function importDailyReviews(reviews) {
     const positive = typeof review.positive === "string" ? review.positive : "";
     const improvement = typeof review.improvement === "string" ? review.improvement : "";
     const customQuestions = JSON.stringify(normalizeCustomQuestions(review.custom_questions));
+    const questionSet = Array.isArray(review.questions)
+      ? JSON.stringify(normalizeReviewQuestions(review.questions))
+      : current?.question_set ?? null;
     const completedAt = typeof review.completed_at === "string" ? review.completed_at : null;
 
     if (current) {
-      updateReview.run(positive, improvement, customQuestions, completedAt, updatedAt, review.date);
+      updateReview.run(
+        positive,
+        improvement,
+        customQuestions,
+        questionSet,
+        completedAt,
+        updatedAt,
+        review.date
+      );
     } else {
       insertReview.run(
         review.date,
         positive,
         improvement,
         customQuestions,
+        questionSet,
         completedAt,
         review.created_at || updatedAt,
         updatedAt
@@ -1286,12 +1596,14 @@ function importDailyTasks(tasks) {
   let pulled = 0;
   const insertDaily = db.prepare(`
     INSERT INTO daily_tasks
-      (id, date_key, time, text, done, is_daily_focus, weekly_priority_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, date_key, time, text, done, is_daily_focus, weekly_priority_id,
+        postponed_from_date, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const updateDaily = db.prepare(`
     UPDATE daily_tasks
-    SET date_key = ?, time = ?, text = ?, done = ?, is_daily_focus = ?, weekly_priority_id = ?, updated_at = ?
+    SET date_key = ?, time = ?, text = ?, done = ?, is_daily_focus = ?,
+      weekly_priority_id = ?, postponed_from_date = ?, updated_at = ?
     WHERE id = ?
   `);
 
@@ -1326,6 +1638,17 @@ function importDailyTasks(tasks) {
     const isDailyFocus = hasOwn(task, "is_daily_focus")
       ? Boolean(task.is_daily_focus)
       : Boolean(current?.is_daily_focus);
+    let postponedFromDate = current?.postponed_from_date ?? null;
+    if (hasOwn(task, "postponed_from_date")) {
+      if (task.postponed_from_date === null || task.postponed_from_date === "") {
+        postponedFromDate = null;
+      } else if (isDateKey(task.postponed_from_date) && task.postponed_from_date < task.date) {
+        postponedFromDate = task.postponed_from_date;
+      } else {
+        postponedFromDate = null;
+        console.warn(`Ungueltiger postponed_from_date-Wert in goals.json fuer daily task ${task.id}: ${task.postponed_from_date}`);
+      }
+    }
     const values = [
       task.date,
       time,
@@ -1333,6 +1656,7 @@ function importDailyTasks(tasks) {
       task.done ? 1 : 0,
       isDailyFocus ? 1 : 0,
       parentId,
+      postponedFromDate,
       updatedAt,
     ];
 
@@ -1345,6 +1669,7 @@ function importDailyTasks(tasks) {
         task.done ? 1 : 0,
         isDailyFocus ? 1 : 0,
         parentId,
+        postponedFromDate,
         createdAt,
         updatedAt
       );
@@ -1361,14 +1686,14 @@ function importWeeklyPlans(plans) {
   let pulled = 0;
   const insertPlan = db.prepare(`
     INSERT INTO weekly_plans
-      (week_key, reflection, positive, improvement, custom_questions,
+      (week_key, reflection, positive, improvement, custom_questions, question_set,
         completed_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const updatePlan = db.prepare(`
     UPDATE weekly_plans
     SET reflection = ?, positive = ?, improvement = ?, custom_questions = ?,
-      completed_at = ?, updated_at = ?
+      question_set = ?, completed_at = ?, updated_at = ?
     WHERE week_key = ?
   `);
   const insertPriority = db.prepare(`
@@ -1395,6 +1720,7 @@ function importWeeklyPlans(plans) {
     const hasReview = hasOwn(plan, "positive")
       || hasOwn(plan, "improvement")
       || hasOwn(plan, "custom_questions")
+      || hasOwn(plan, "questions")
       || hasOwn(plan, "completed_at");
     const positive = hasReview
       ? (typeof plan.positive === "string" ? plan.positive : "")
@@ -1405,6 +1731,9 @@ function importWeeklyPlans(plans) {
     const customQuestions = hasReview
       ? JSON.stringify(normalizeCustomQuestions(plan.custom_questions))
       : currentPlan?.custom_questions ?? "[]";
+    const questionSet = Array.isArray(plan.questions)
+      ? JSON.stringify(normalizeReviewQuestions(plan.questions))
+      : currentPlan?.question_set ?? null;
     const completedAt = hasReview
       ? (typeof plan.completed_at === "string" ? plan.completed_at : null)
       : currentPlan?.completed_at ?? null;
@@ -1416,6 +1745,7 @@ function importWeeklyPlans(plans) {
         positive,
         improvement,
         customQuestions,
+        questionSet,
         completedAt,
         createdAt,
         updatedAt
@@ -1427,6 +1757,7 @@ function importWeeklyPlans(plans) {
         positive,
         improvement,
         customQuestions,
+        questionSet,
         completedAt,
         updatedAt,
         weekKey
@@ -1671,6 +2002,16 @@ function importGoalsByPeriod(period, goals) {
     SET text = ?, done = ?, updated_at = ?
     WHERE id = ?
   `);
+  const insertLegacyMonthlyPriority = db.prepare(`
+    INSERT INTO weekly_priorities
+      (id, week_key, text, done, monthly_goal_id, created_at, updated_at)
+    VALUES (?, NULL, ?, ?, ?, ?, ?)
+  `);
+  const updateLegacyMonthlyPriority = db.prepare(`
+    UPDATE weekly_priorities
+    SET text = ?, done = ?, monthly_goal_id = ?, updated_at = ?
+    WHERE id = ?
+  `);
 
   for (const goal of goals) {
     if (!goal?.id || typeof goal.title !== "string") {
@@ -1736,6 +2077,37 @@ function importGoalsByPeriod(period, goals) {
 
       const itemUpdatedAt = item.updated_at || updatedAt;
       const itemCreatedAt = item.created_at || itemUpdatedAt;
+
+      if (period === "monthly") {
+        if (!liveEntryWins("checklist_item", item.id, itemUpdatedAt)) {
+          continue;
+        }
+        const currentPriority = getWeeklyPriorityStatement.get(item.id);
+        if (!currentPriority) {
+          insertLegacyMonthlyPriority.run(
+            item.id,
+            item.text,
+            item.done ? 1 : 0,
+            goal.id,
+            itemCreatedAt,
+            itemUpdatedAt
+          );
+          pulled += 1;
+        } else if (isJsonNewer(itemUpdatedAt, currentPriority.updated_at)) {
+          updateLegacyMonthlyPriority.run(
+            item.text,
+            item.done ? 1 : 0,
+            goal.id,
+            itemUpdatedAt,
+            item.id
+          );
+          pulled += 1;
+        }
+        db.prepare("DELETE FROM checklist_items WHERE id = ?").run(item.id);
+        recordTombstone("checklist_item", item.id, itemUpdatedAt);
+        continue;
+      }
+
       const currentItem = getChecklistItemStatement.get(item.id);
       if (!liveEntryWins("checklist_item", item.id, itemUpdatedAt)) {
         continue;
@@ -1876,29 +2248,41 @@ export function saveDailyReview({
   positive = "",
   improvement = "",
   customQuestions = [],
+  questions,
   complete = false,
 }) {
   if (!isDateKey(dateKey)) return null;
   const current = getDailyReviewStatement.get(dateKey);
   const timestamp = nowIso();
   const completedAt = complete ? (current?.completed_at || timestamp) : null;
-  const serializedQuestions = JSON.stringify(normalizeCustomQuestions(customQuestions));
+  const normalizedQuestions = Array.isArray(questions)
+    ? normalizeReviewQuestions(questions)
+    : legacyReviewQuestions({ positive, improvement, custom_questions: customQuestions });
+  const positiveAnswer = normalizedQuestions.find((item) => item.kind === "positive")?.answer ?? "";
+  const improvementAnswer = normalizedQuestions.find((item) => item.kind === "improvement")?.answer ?? "";
+  const serializedCustomQuestions = JSON.stringify(
+    normalizedQuestions.filter((item) => item.kind === "custom")
+  );
+  const serializedQuestionSet = JSON.stringify(normalizedQuestions);
 
   db.prepare(`
     INSERT INTO daily_reviews
-      (date_key, positive, improvement, custom_questions, completed_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+      (date_key, positive, improvement, custom_questions, question_set,
+        completed_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(date_key) DO UPDATE SET
       positive = excluded.positive,
       improvement = excluded.improvement,
       custom_questions = excluded.custom_questions,
+      question_set = excluded.question_set,
       completed_at = excluded.completed_at,
       updated_at = excluded.updated_at
   `).run(
     dateKey,
-    positive,
-    improvement,
-    serializedQuestions,
+    positiveAnswer,
+    improvementAnswer,
+    serializedCustomQuestions,
+    serializedQuestionSet,
     completedAt,
     current?.created_at || timestamp,
     timestamp
@@ -1912,6 +2296,7 @@ export function saveWeeklyReview({
   positive = "",
   improvement = "",
   customQuestions = [],
+  questions,
   complete = false,
 }) {
   const normalizedWeekKey = startOfIsoWeekKey(weekKey);
@@ -1920,15 +2305,21 @@ export function saveWeeklyReview({
   ensureWeeklyPlan(normalizedWeekKey, timestamp);
   const current = getWeeklyPlanStatement.get(normalizedWeekKey);
   const completedAt = current?.completed_at || (complete ? timestamp : null);
+  const normalizedQuestions = Array.isArray(questions)
+    ? normalizeReviewQuestions(questions)
+    : legacyReviewQuestions({ positive, improvement, custom_questions: customQuestions });
+  const positiveAnswer = normalizedQuestions.find((item) => item.kind === "positive")?.answer ?? "";
+  const improvementAnswer = normalizedQuestions.find((item) => item.kind === "improvement")?.answer ?? "";
   db.prepare(`
     UPDATE weekly_plans
     SET reflection = '', positive = ?, improvement = ?, custom_questions = ?,
-      completed_at = ?, updated_at = ?
+      question_set = ?, completed_at = ?, updated_at = ?
     WHERE week_key = ?
   `).run(
-    positive,
-    improvement,
-    JSON.stringify(normalizeCustomQuestions(customQuestions)),
+    positiveAnswer,
+    improvementAnswer,
+    JSON.stringify(normalizedQuestions.filter((item) => item.kind === "custom")),
+    JSON.stringify(normalizedQuestions),
     completedAt,
     timestamp,
     normalizedWeekKey
@@ -1991,6 +2382,59 @@ export function updateDailyTask(id, patch) {
   notifyWrite();
 
   return mapDailyTask(getDailyTaskStatement.get(id));
+}
+
+export function carryOverIncompleteDailyTasks({ fromDateKey, toDateKey }) {
+  if (!isDateKey(fromDateKey) || !isDateKey(toDateKey) || addDaysToDateKey(fromDateKey, 1) !== toDateKey) {
+    const error = new Error("Aufgaben können nur auf den unmittelbar folgenden Tag verschoben werden.");
+    error.status = 400;
+    throw error;
+  }
+
+  const review = getDailyReviewStatement.get(fromDateKey);
+  if (!review?.completed_at) {
+    const error = new Error("Der Vortag muss abgeschlossen sein, bevor Aufgaben übernommen werden können.");
+    error.status = 409;
+    throw error;
+  }
+
+  const tasks = db.prepare(`
+    SELECT id, weekly_priority_id, postponed_from_date
+    FROM daily_tasks
+    WHERE date_key = ? AND done = 0
+    ORDER BY time ASC, created_at ASC, id ASC
+  `).all(fromDateKey);
+
+  if (!tasks.length) {
+    return [];
+  }
+
+  const targetWeekKey = startOfIsoWeekKey(toDateKey);
+  const timestamp = nowIso();
+  const update = db.prepare(`
+    UPDATE daily_tasks
+    SET date_key = ?, weekly_priority_id = ?, postponed_from_date = ?, updated_at = ?
+    WHERE id = ?
+  `);
+
+  db.exec("BEGIN");
+  try {
+    for (const task of tasks) {
+      const parent = task.weekly_priority_id
+        ? getWeeklyPriorityStatement.get(task.weekly_priority_id)
+        : null;
+      const parentId = parent?.week_key === targetWeekKey ? task.weekly_priority_id : null;
+      const postponedFromDate = task.postponed_from_date || fromDateKey;
+      update.run(toDateKey, parentId, postponedFromDate, timestamp, task.id);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  notifyWrite();
+  return tasks.map((task) => mapDailyTask(getDailyTaskStatement.get(task.id)));
 }
 
 export function deleteDailyTask(id) {
@@ -2056,7 +2500,7 @@ export function updateGoal(id, patch) {
       for (const priority of db.prepare(`
         SELECT id, week_key FROM weekly_priorities WHERE monthly_goal_id = ?
       `).all(id)) {
-        if (!weekMonthKeys(priority.week_key).includes(periodKey)) {
+        if (priority.week_key && !weekMonthKeys(priority.week_key).includes(periodKey)) {
           db.prepare(`
             UPDATE weekly_priorities
             SET monthly_goal_id = NULL, updated_at = ?

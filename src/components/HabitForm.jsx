@@ -94,7 +94,7 @@ export default function HabitForm({ monthDate, onCreate, onCancel }) {
         ) : null}
         <button
           type="submit"
-          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-ink shadow-inset transition hover:brightness-110"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-accent-contrast shadow-inset transition hover:brightness-110"
         >
           <Plus className="h-4 w-4" />
           Hinzufügen

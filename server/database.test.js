@@ -36,6 +36,7 @@ test("migrates existing rows without changing their content", () => {
   assert.equal(task.time, "08:45");
   assert.equal(task.weeklyPriorityId, null);
   assert.equal(task.isDailyFocus, false);
+  assert.equal(task.postponedFromDate, null);
 });
 
 test("creates and validates the full goal hierarchy", () => {
@@ -107,6 +108,168 @@ test("creates and validates the full goal hierarchy", () => {
   );
 });
 
+test("creates and syncs weekly priorities without a scheduled week", () => {
+  const monthly = database.createGoal({
+    period: "monthly",
+    periodKey: "2027-06",
+    title: "June priority pool",
+  });
+  const priority = database.createWeeklyPriority({
+    weekKey: null,
+    text: "Unscheduled weekly priority",
+    monthlyGoalId: monthly.id,
+  });
+
+  assert.equal(priority.weekKey, null);
+  assert.equal(priority.monthlyGoalId, monthly.id);
+  assert.equal(
+    database.getWeeklyOverview("2027-06-07").priorities.some((item) => item.id === priority.id),
+    false
+  );
+
+  const exported = database.exportGoalsForSync();
+  assert.ok(exported.unassigned_weekly_priorities.some((item) => item.id === priority.id));
+  assert.equal(exported.monthly.find((item) => item.id === monthly.id).subtasks, undefined);
+
+  const updated = database.updateWeeklyPriority(priority.id, { done: true });
+  assert.equal(updated.done, true);
+  assert.equal(updated.weekKey, null);
+
+  database.importGoalsFromSync({
+    unassigned_weekly_priorities: [{
+      id: "remote-unassigned-priority",
+      text: "Imported without week",
+      done: false,
+      monthly_goal_id: monthly.id,
+      created_at: "2098-01-01T00:00:00.000Z",
+      updated_at: "2098-01-01T00:00:00.000Z",
+    }],
+  });
+  const imported = database.getState().weeklyPriorities.find(
+    (item) => item.id === "remote-unassigned-priority"
+  );
+  assert.equal(imported.weekKey, null);
+  assert.equal(imported.monthlyGoalId, monthly.id);
+});
+
+test("reschedules weekly priorities and unlinks tasks from the previous week", () => {
+  const monthly = database.createGoal({
+    period: "monthly",
+    periodKey: "2027-06",
+    title: "June schedule",
+  });
+  const priority = database.createWeeklyPriority({
+    weekKey: "2027-06-07",
+    text: "Scheduled priority",
+    monthlyGoalId: monthly.id,
+  });
+  const task = database.createDailyTask({
+    dateKey: "2027-06-08",
+    time: "09:15",
+    text: "Linked action",
+    weeklyPriorityId: priority.id,
+  });
+
+  const moved = database.updateWeeklyPriority(priority.id, {
+    text: "Renamed priority",
+    weekKey: "2027-06-14",
+  });
+
+  assert.equal(moved.text, "Renamed priority");
+  assert.equal(moved.weekKey, "2027-06-14");
+  assert.equal(findTask(task.id).weeklyPriorityId, null);
+
+  const unassigned = database.updateWeeklyPriority(priority.id, { weekKey: null });
+  assert.equal(unassigned.weekKey, null);
+  assert.equal(unassigned.monthlyGoalId, monthly.id);
+
+  const assignedAgain = database.updateWeeklyPriority(priority.id, { weekKey: "2027-06-21" });
+  assert.equal(assignedAgain.weekKey, "2027-06-21");
+  assert.equal(assignedAgain.monthlyGoalId, monthly.id);
+});
+
+test("migrates legacy monthly checklist items into unassigned weekly priorities", async () => {
+  const migrationDirectory = mkdtempSync(join(tmpdir(), "zielplaner-monthly-priorities-"));
+  const migrationPath = join(migrationDirectory, "goals.db");
+  const legacy = new DatabaseSync(migrationPath);
+  legacy.exec(`
+    CREATE TABLE daily_tasks (
+      id TEXT PRIMARY KEY,
+      date_key TEXT NOT NULL,
+      time TEXT NOT NULL,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO daily_tasks (id, date_key, time, text, done)
+    VALUES ('migration-task', '2027-06-01', '09:00', 'Keep database seeded', 0);
+
+    CREATE TABLE goals (
+      id TEXT PRIMARY KEY,
+      period TEXT NOT NULL,
+      period_key TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO goals (id, period, period_key, title, description)
+    VALUES ('legacy-month', 'monthly', '2027-06', 'Legacy month', 'Keep description');
+
+    CREATE TABLE checklist_items (
+      id TEXT PRIMARY KEY,
+      goal_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO checklist_items (id, goal_id, text, done)
+    VALUES ('legacy-month-item', 'legacy-month', 'Migrated priority', 1);
+
+    CREATE TABLE weekly_plans (
+      week_key TEXT PRIMARY KEY,
+      reflection TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE weekly_priorities (
+      id TEXT PRIMARY KEY,
+      week_key TEXT NOT NULL,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  legacy.close();
+
+  const previousPath = process.env.DATABASE_PATH;
+  process.env.DATABASE_PATH = migrationPath;
+  const migratedDatabase = await import(`./database.js?monthly-migration=${Date.now()}`);
+  if (previousPath === undefined) {
+    delete process.env.DATABASE_PATH;
+  } else {
+    process.env.DATABASE_PATH = previousPath;
+  }
+
+  const state = migratedDatabase.getState();
+  const monthlyGoal = state.monthlyGoals.find((goal) => goal.id === "legacy-month");
+  const migratedPriority = state.weeklyPriorities.find((item) => item.text === "Migrated priority");
+  assert.deepEqual(monthlyGoal.checklist, []);
+  assert.equal(migratedPriority.weekKey, null);
+  assert.equal(migratedPriority.monthlyGoalId, "legacy-month");
+  assert.equal(migratedPriority.done, true);
+
+  const migratedSqlite = new DatabaseSync(migrationPath);
+  const weekColumn = migratedSqlite
+    .prepare("PRAGMA table_info(weekly_priorities)")
+    .all()
+    .find((column) => column.name === "week_key");
+  assert.equal(weekColumn.notnull, 0);
+  migratedSqlite.close();
+});
+
 test("daily focus survives sync and old files do not clear it", () => {
   const task = database.createDailyTask({
     dateKey: "2027-05-10",
@@ -171,6 +334,99 @@ test("tasks without a time stay in the daily backlog until scheduled", () => {
 
   const returnedToBacklog = database.updateDailyTask(task.id, { time: "" });
   assert.equal(returnedToBacklog.time, "");
+});
+
+test("carries incomplete tasks forward and preserves their original date", () => {
+  const openTask = database.createDailyTask({
+    dateKey: "2040-02-01",
+    time: "11:30",
+    text: "Carry this task",
+  });
+  const completedTask = database.createDailyTask({
+    dateKey: "2040-02-01",
+    time: "12:30",
+    text: "Leave completed task behind",
+  });
+  database.updateDailyTask(completedTask.id, { done: true });
+  database.saveDailyReview({
+    dateKey: "2040-02-01",
+    positive: "Done",
+    improvement: "Carry less",
+    complete: true,
+  });
+
+  const movedOnce = database.carryOverIncompleteDailyTasks({
+    fromDateKey: "2040-02-01",
+    toDateKey: "2040-02-02",
+  });
+  assert.deepEqual(movedOnce.map((task) => task.id), [openTask.id]);
+  assert.equal(movedOnce[0].dateKey, "2040-02-02");
+  assert.equal(movedOnce[0].postponedFromDate, "2040-02-01");
+  assert.equal(findTask(completedTask.id).dateKey, "2040-02-01");
+
+  database.saveDailyReview({
+    dateKey: "2040-02-02",
+    positive: "Still open",
+    improvement: "Move again",
+    complete: true,
+  });
+  const movedTwice = database.carryOverIncompleteDailyTasks({
+    fromDateKey: "2040-02-02",
+    toDateKey: "2040-02-03",
+  });
+  assert.equal(movedTwice[0].postponedFromDate, "2040-02-01");
+  assert.equal(
+    database.exportGoalsForSync().daily.find((task) => task.id === openTask.id).postponed_from_date,
+    "2040-02-01"
+  );
+
+  database.importGoalsFromSync({
+    daily: [{
+      id: openTask.id,
+      date: "2040-02-03",
+      time: openTask.time,
+      text: openTask.text,
+      done: false,
+      updated_at: "2098-01-01T00:00:00.000Z",
+    }],
+  });
+  assert.equal(findTask(openTask.id).postponedFromDate, "2040-02-01");
+
+  const blockedTask = database.createDailyTask({
+    dateKey: "2040-03-01",
+    time: "",
+    text: "Review is missing",
+  });
+  assert.throws(
+    () => database.carryOverIncompleteDailyTasks({
+      fromDateKey: "2040-03-01",
+      toDateKey: "2040-03-02",
+    }),
+    (error) => error.status === 409
+  );
+  assert.equal(findTask(blockedTask.id).dateKey, "2040-03-01");
+
+  const oldWeekPriority = database.createWeeklyPriority({
+    weekKey: "2027-01-04",
+    text: "Sunday priority",
+  });
+  const sundayTask = database.createDailyTask({
+    dateKey: "2027-01-10",
+    time: "16:00",
+    text: "Cross the ISO week",
+    weeklyPriorityId: oldWeekPriority.id,
+  });
+  database.saveDailyReview({
+    dateKey: "2027-01-10",
+    positive: "Week done",
+    improvement: "Carry over",
+    complete: true,
+  });
+  const mondayTasks = database.carryOverIncompleteDailyTasks({
+    fromDateKey: "2027-01-10",
+    toDateKey: "2027-01-11",
+  });
+  assert.equal(mondayTasks.find((task) => task.id === sundayTask.id).weeklyPriorityId, null);
 });
 
 test("daily reviews keep drafts, custom questions and completion state in sync", () => {
@@ -278,6 +534,48 @@ test("weekly reviews keep drafts, legacy reflections and completion state in syn
   );
   assert.equal(legacy.customQuestions[0].question, "Bisherige Wochenreflexion");
   assert.equal(legacy.customQuestions[0].answer, "Old combined weekly reflection");
+});
+
+test("review question sets preserve edits and deletions through sync", () => {
+  const questions = [
+    {
+      id: "positive",
+      kind: "positive",
+      question: "Was hat heute besonders gut funktioniert?",
+      answer: "Konzentrierte Arbeit",
+    },
+    {
+      id: "daily-energy",
+      kind: "custom",
+      question: "Wie war meine Energie?",
+      answer: "Stabil",
+    },
+  ];
+  const saved = database.saveDailyReview({
+    dateKey: "2037-04-14",
+    questions,
+  });
+
+  assert.deepEqual(saved.questions, questions);
+  assert.equal(saved.improvement, "");
+  assert.equal(saved.customQuestions.length, 1);
+
+  const exported = database.exportGoalsForSync().daily_reviews.find(
+    (review) => review.date === "2037-04-14"
+  );
+  assert.deepEqual(exported.questions, questions);
+
+  database.importGoalsFromSync({
+    daily_reviews: [{
+      ...exported,
+      date: "2037-04-15",
+      updated_at: "2097-01-01T00:00:00.000Z",
+    }],
+  });
+  const imported = database.getState().dailyReviews.find(
+    (review) => review.dateKey === "2037-04-15"
+  );
+  assert.deepEqual(imported.questions, questions);
 });
 
 test("habit pauses are validated, synchronized and block paused dates", () => {

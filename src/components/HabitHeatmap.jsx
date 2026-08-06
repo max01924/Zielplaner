@@ -70,7 +70,7 @@ export default function HabitHeatmap({
           isPaused
             ? "cursor-not-allowed bg-canvas-deep/35 text-accent/70"
             : isCompleted
-              ? "bg-accent text-ink"
+              ? "bg-accent text-accent-contrast"
               : "bg-canvas-deep text-muted hover:bg-surface-hover hover:text-ink"
         }`}
         aria-label={isPaused
