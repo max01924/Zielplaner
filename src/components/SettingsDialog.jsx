@@ -1,5 +1,6 @@
-import { ChevronDown, Moon, Palette, Save, Sun, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronDown, Image, Moon, Palette, Save, Sun, Trash2, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { validateBackgroundFile } from "../utils/backgroundImage.js";
 import { STANDARD_ACCENT } from "../utils/settings.js";
 
 const modeOptions = [
@@ -30,15 +31,35 @@ const accentPalette = [
   "#9B3F78",
 ];
 
-export default function SettingsDialog({ settings, onSave, onClose }) {
+export default function SettingsDialog({ settings, backgroundImageUrl, onSave, onClose }) {
   const [draft, setDraft] = useState(settings);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [backgroundFile, setBackgroundFile] = useState(null);
+  const [backgroundPreviewUrl, setBackgroundPreviewUrl] = useState(null);
+  const [removeStoredBackground, setRemoveStoredBackground] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef(null);
+  const activeBackgroundPreview = removeStoredBackground
+    ? null
+    : (backgroundPreviewUrl || backgroundImageUrl);
+
+  useEffect(() => {
+    if (!backgroundFile) {
+      setBackgroundPreviewUrl(null);
+      return undefined;
+    }
+    const objectUrl = URL.createObjectURL(backgroundFile);
+    setBackgroundPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [backgroundFile]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     function handleKeyDown(event) {
       if (event.key === "Escape") {
+        if (isSaving) return;
         if (paletteOpen) setPaletteOpen(false);
         else onClose();
       }
@@ -48,13 +69,42 @@ export default function SettingsDialog({ settings, onSave, onClose }) {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose, paletteOpen]);
+  }, [isSaving, onClose, paletteOpen]);
+
+  function chooseBackgroundFile(event) {
+    const [file] = event.target.files ?? [];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      validateBackgroundFile(file);
+      setBackgroundFile(file);
+      setRemoveStoredBackground(false);
+      setSaveError("");
+      setDraft((current) => ({ ...current, backgroundMode: "custom" }));
+    } catch (error) {
+      setSaveError(error.message);
+    }
+  }
+
+  async function saveSettings() {
+    try {
+      setIsSaving(true);
+      setSaveError("");
+      await onSave(draft, {
+        file: backgroundFile,
+        remove: removeStoredBackground,
+      });
+    } catch (error) {
+      setSaveError(error.message);
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-canvas/80 px-4 py-8 backdrop-blur-sm sm:items-center sm:py-12"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!isSaving && event.target === event.currentTarget) onClose();
       }}
     >
       <section
@@ -71,7 +121,8 @@ export default function SettingsDialog({ settings, onSave, onClose }) {
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={() => onSave(draft)}
+              onClick={saveSettings}
+              disabled={isSaving}
               className="grid h-10 w-10 place-items-center rounded-control text-muted transition hover:bg-surface-hover hover:text-ink"
               aria-label="Einstellungen speichern"
               title="Speichern"
@@ -81,6 +132,7 @@ export default function SettingsDialog({ settings, onSave, onClose }) {
             <button
               type="button"
               onClick={onClose}
+              disabled={isSaving}
               className="grid h-10 w-10 place-items-center rounded-control text-muted transition hover:bg-surface-hover hover:text-ink"
               aria-label="Einstellungen schließen"
               title="Schließen"
@@ -113,6 +165,123 @@ export default function SettingsDialog({ settings, onSave, onClose }) {
                 );
               })}
             </div>
+          </fieldset>
+
+          <fieldset>
+            <legend className="mb-3 text-[10px] font-bold uppercase text-subtle">Hintergrund</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDraft((current) => ({ ...current, backgroundMode: "default" }))}
+                className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-control px-4 text-xs font-black uppercase transition ${
+                  draft.backgroundMode === "default"
+                    ? "bg-ink text-inverse"
+                    : "bg-depth-inset text-muted shadow-inset hover:text-ink"
+                }`}
+                aria-pressed={draft.backgroundMode === "default"}
+              >
+                <Palette className="h-4 w-4" />
+                Standard
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeBackgroundPreview) {
+                    setDraft((current) => ({ ...current, backgroundMode: "custom" }));
+                  } else {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-control px-4 text-xs font-black uppercase transition ${
+                  draft.backgroundMode === "custom"
+                    ? "bg-accent text-accent-contrast"
+                    : "bg-depth-inset text-muted shadow-inset hover:text-ink"
+                }`}
+                aria-pressed={draft.backgroundMode === "custom"}
+              >
+                <Image className="h-4 w-4" />
+                Eigenes Bild
+              </button>
+            </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              onChange={chooseBackgroundFile}
+              className="sr-only"
+              aria-label="Hintergrundbild auswählen"
+            />
+
+            <div className="mt-3 overflow-hidden rounded-control bg-canvas-deep">
+              {activeBackgroundPreview ? (
+                <div className="relative aspect-[16/7] min-h-32">
+                  <img
+                    src={activeBackgroundPreview}
+                    alt="Vorschau des eigenen Hintergrundbilds"
+                    className="h-full w-full object-cover"
+                    style={{
+                      filter: `blur(${draft.backgroundBlur}px)`,
+                      transform: draft.backgroundBlur ? "scale(1.06)" : "none",
+                    }}
+                  />
+                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1 bg-canvas/70 p-2 backdrop-blur-sm">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="grid h-9 w-9 place-items-center rounded-lg text-ink transition hover:bg-surface-hover"
+                      aria-label="Hintergrundbild ersetzen"
+                      title="Bild ersetzen"
+                    >
+                      <Upload className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBackgroundFile(null);
+                        setRemoveStoredBackground(true);
+                        setDraft((current) => ({ ...current, backgroundMode: "default" }));
+                      }}
+                      className="grid h-9 w-9 place-items-center rounded-lg text-ink transition hover:bg-surface-hover"
+                      aria-label="Hintergrundbild entfernen"
+                      title="Bild entfernen"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex min-h-32 w-full items-center justify-center gap-2 px-5 text-sm font-bold text-muted transition hover:bg-surface-hover hover:text-ink"
+                >
+                  <Upload className="h-4 w-4 text-accent" />
+                  Bild auswählen
+                </button>
+              )}
+            </div>
+            <label className={`mt-4 block ${activeBackgroundPreview ? "" : "opacity-40"}`}>
+              <span className="mb-2 flex items-center justify-between gap-4 text-[10px] font-bold uppercase text-subtle">
+                Unschärfe
+                <output>{draft.backgroundBlur} px</output>
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="24"
+                step="1"
+                value={draft.backgroundBlur}
+                onInput={(event) => setDraft((current) => ({
+                  ...current,
+                  backgroundBlur: Number(event.target.value),
+                }))}
+                disabled={!activeBackgroundPreview}
+                className="background-blur-slider w-full cursor-pointer disabled:cursor-not-allowed"
+                aria-label="Unschärfe des Hintergrundbilds"
+              />
+            </label>
+            {saveError ? <p className="mt-3 text-xs font-semibold text-accent">{saveError}</p> : null}
           </fieldset>
 
           <fieldset className="relative">

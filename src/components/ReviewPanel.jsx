@@ -1,5 +1,5 @@
 import { CheckCircle2, LockKeyhole, MessageSquareText, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const defaultQuestions = [
   { id: "positive", kind: "positive", question: "Was war positiv?", answer: "" },
@@ -8,6 +8,29 @@ const defaultQuestions = [
 
 function createQuestionId() {
   return globalThis.crypto?.randomUUID?.() ?? `question-${Date.now()}`;
+}
+
+function AnswerField({ value, onChange, autoGrow }) {
+  const textareaRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!autoGrow || !textareaRef.current) return;
+    const textarea = textareaRef.current;
+    textarea.style.height = "0px";
+    textarea.style.height = `${Math.max(96, textarea.scrollHeight)}px`;
+  }, [autoGrow, value]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={onChange}
+      rows={autoGrow ? 1 : 4}
+      className={`bg-depth-control w-full rounded-control px-4 py-3 text-sm leading-relaxed text-ink shadow-inset outline-none placeholder:text-subtle focus:ring-2 focus:ring-accent ${
+        autoGrow ? "resize-none overflow-hidden" : "resize-y"
+      }`}
+    />
+  );
 }
 
 export default function ReviewPanel({
@@ -21,6 +44,8 @@ export default function ReviewPanel({
   onSave,
   flat = false,
   allowReopen = false,
+  stackedQuestions = false,
+  autoGrowAnswers = false,
 }) {
   const [questions, setQuestions] = useState(review?.questions ?? defaultQuestions);
   const [newQuestion, setNewQuestion] = useState("");
@@ -114,7 +139,7 @@ export default function ReviewPanel({
   ) : (
     <div className={`${flat ? "" : "mt-7"} space-y-6`}>
       {questions.length ? (
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className={`grid gap-5 ${stackedQuestions ? "-mx-7 grid-cols-1 sm:-mx-8" : "lg:grid-cols-2"}`}>
           {questions.map((item) => {
             const isEditingQuestion = editingQuestionId === item.id;
             return (
@@ -179,11 +204,10 @@ export default function ReviewPanel({
                     )}
                   </span>
                 </div>
-                <textarea
+                <AnswerField
                   value={item.answer}
                   onChange={(event) => updateAnswer(item.id, event.target.value)}
-                  rows="4"
-                  className="bg-depth-control w-full resize-y rounded-control px-4 py-3 text-sm leading-relaxed text-ink shadow-inset outline-none placeholder:text-subtle focus:ring-2 focus:ring-accent"
+                  autoGrow={autoGrowAnswers}
                 />
               </div>
             );

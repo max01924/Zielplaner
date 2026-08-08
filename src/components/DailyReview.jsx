@@ -12,6 +12,8 @@ export default function DailyReview({ review, canEdit, onSave }) {
       onSave={onSave}
       flat
       allowReopen
+      stackedQuestions
+      autoGrowAnswers
     />
   );
 }

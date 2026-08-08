@@ -9,10 +9,16 @@ import TabNav from "./components/TabNav.jsx";
 import WeeklyView from "./components/WeeklyView.jsx";
 import YearlyView from "./components/YearlyView.jsx";
 import { addDays, dateFromKey, startOfIsoWeek, toDateKey, toMonthKey } from "./utils/date.js";
+import {
+  loadBackgroundImage,
+  optimizeBackgroundImage,
+  removeBackgroundImage,
+  storeBackgroundImage,
+} from "./utils/backgroundImage.js";
 import { canFillDailyReview, pendingDailyReviewDate } from "./utils/dailyReview.js";
 import { canFillWeeklyReview, pendingWeeklyReviewWeek } from "./utils/weeklyReview.js";
 import { reviewForPeriod } from "./utils/reviewQuestions.js";
-import { applyAppearance, loadSettings, storeSettings } from "./utils/settings.js";
+import { applyAppearance, applyBackgroundImage, loadSettings, normalizeSettings, storeSettings } from "./utils/settings.js";
 import { MessageSquareText, Repeat2, Settings, Target } from "lucide-react";
 
 const modes = [
@@ -135,6 +141,8 @@ export default function App() {
   const [activeMode, setActiveMode] = useState(settings.startMode);
   const [activeTab, setActiveTab] = useState(settings.startTab);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [backgroundImageBlob, setBackgroundImageBlob] = useState(null);
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState(null);
   const [planningDate, setPlanningDate] = useState(() => new Date());
   const [habitMonthDate, setHabitMonthDate] = useState(() => new Date());
   const [dailyTasks, setDailyTasks] = useState({});
@@ -181,6 +189,35 @@ export default function App() {
   const visibleMonthlyGoals = monthlyGoals.filter((goal) => goal.periodKey === monthKey);
   const visibleYearlyGoals = yearlyGoals.filter((goal) => goal.periodKey === yearKey);
   const weekPriorities = weeklyPriorities.filter((priority) => priority.weekKey === weekKey);
+
+  useEffect(() => {
+    let isMounted = true;
+    loadBackgroundImage()
+      .then((blob) => {
+        if (isMounted) setBackgroundImageBlob(blob);
+      })
+      .catch((backgroundError) => {
+        console.warn("Hintergrundbild konnte nicht geladen werden:", backgroundError);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!backgroundImageBlob) {
+      setBackgroundImageUrl(null);
+      return undefined;
+    }
+    const objectUrl = URL.createObjectURL(backgroundImageBlob);
+    setBackgroundImageUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [backgroundImageBlob]);
+
+  useEffect(() => {
+    applyAppearance(settings);
+    applyBackgroundImage(settings, backgroundImageUrl);
+  }, [backgroundImageUrl, settings]);
 
   const loadState = useCallback(async () => {
     const [state, habitState, weekState] = await Promise.all([
@@ -586,11 +623,26 @@ export default function App() {
     setActiveTab("daily");
   }
 
-  function saveSettings(nextSettings) {
-    const savedSettings = storeSettings(nextSettings);
-    applyAppearance(savedSettings);
+  async function saveSettings(nextSettings, backgroundChange = {}) {
+    let nextBackgroundBlob = backgroundImageBlob;
+    if (backgroundChange.file) {
+      nextBackgroundBlob = await optimizeBackgroundImage(backgroundChange.file);
+      await storeBackgroundImage(nextBackgroundBlob);
+    } else if (backgroundChange.remove) {
+      await removeBackgroundImage();
+      nextBackgroundBlob = null;
+    }
+
+    const normalizedSettings = normalizeSettings(nextSettings);
+    if (normalizedSettings.backgroundMode === "custom" && !nextBackgroundBlob) {
+      throw new Error("Bitte zuerst ein Hintergrundbild auswählen.");
+    }
+
+    const savedSettings = storeSettings(normalizedSettings);
+    setBackgroundImageBlob(nextBackgroundBlob);
     setSettings(savedSettings);
     setSettingsOpen(false);
+    return true;
   }
 
   const habitHandlers = {
@@ -625,8 +677,10 @@ export default function App() {
   };
 
   return (
-    <main className="min-h-screen px-4 py-5 text-ink sm:px-6 sm:py-7 lg:px-10 lg:py-8">
-      <div className="mx-auto w-full max-w-7xl">
+    <>
+      <div className="custom-background-layer" aria-hidden="true" />
+      <main className="relative z-10 min-h-screen px-4 py-5 text-ink sm:px-6 sm:py-7 lg:px-10 lg:py-8">
+        <div className="mx-auto w-full max-w-7xl">
         <header className="mb-10">
           <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
             <div className="flex items-center gap-3 lg:justify-self-start">
@@ -769,11 +823,13 @@ export default function App() {
         {settingsOpen ? (
           <SettingsDialog
             settings={settings}
+            backgroundImageUrl={backgroundImageUrl}
             onSave={saveSettings}
             onClose={() => setSettingsOpen(false)}
           />
         ) : null}
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   );
 }

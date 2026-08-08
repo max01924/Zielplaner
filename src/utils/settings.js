@@ -7,6 +7,8 @@ export const defaultSettings = {
   theme: "dark",
   accentMode: "standard",
   accentColor: STANDARD_ACCENT,
+  backgroundMode: "default",
+  backgroundBlur: 0,
 };
 
 const validModes = new Set(["goals", "habits"]);
@@ -18,12 +20,17 @@ export function normalizeHexColor(value) {
 }
 
 export function normalizeSettings(value = {}) {
+  const backgroundBlur = Number(value.backgroundBlur);
   return {
     startMode: validModes.has(value.startMode) ? value.startMode : defaultSettings.startMode,
     startTab: validTabs.has(value.startTab) ? value.startTab : defaultSettings.startTab,
     theme: value.theme === "light" ? "light" : "dark",
     accentMode: value.accentMode === "custom" ? "custom" : "standard",
     accentColor: normalizeHexColor(value.accentColor) ?? STANDARD_ACCENT,
+    backgroundMode: value.backgroundMode === "custom" ? "custom" : "default",
+    backgroundBlur: Number.isFinite(backgroundBlur)
+      ? Math.max(0, Math.min(24, Math.round(backgroundBlur)))
+      : defaultSettings.backgroundBlur,
   };
 }
 
@@ -77,4 +84,16 @@ export function applyAppearance(settings, root = globalThis.document?.documentEl
   root.style.setProperty("--color-accent", accent);
   root.style.setProperty("--color-accent-rgb", `${red} ${green} ${blue}`);
   root.style.setProperty("--color-accent-contrast", accentContrastColor(accent));
+  root.style.setProperty("--custom-background-blur", `${normalized.backgroundBlur}px`);
+}
+
+export function applyBackgroundImage(settings, imageUrl, root = globalThis.document?.documentElement) {
+  if (!root) return;
+  const useCustomBackground = normalizeSettings(settings).backgroundMode === "custom" && Boolean(imageUrl);
+  root.dataset.background = useCustomBackground ? "custom" : "default";
+  if (useCustomBackground) {
+    root.style.setProperty("--custom-background-image", `url("${imageUrl}")`);
+  } else {
+    root.style.removeProperty("--custom-background-image");
+  }
 }
