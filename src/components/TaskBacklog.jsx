@@ -1,6 +1,6 @@
 import { Check, Inbox, Link2, Pencil, Save, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
-import { isoWeekKeyFromDateKey } from "../utils/date.js";
+import { formatDateKey, isoWeekKeyFromDateKey } from "../utils/date.js";
 import ParentSelect from "./ParentSelect.jsx";
 import TimeInput from "./TimeInput.jsx";
 
@@ -66,7 +66,7 @@ function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onT
                       setDraftPriorityId(null);
                     }
                   }}
-                  className="bg-depth-control min-h-11 w-full rounded-control px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
+                  className="min-h-11 w-full rounded-control bg-canvas-deep px-3 text-sm text-ink outline-none focus:ring-2 focus:ring-accent"
                 />
               </label>
               <label>
@@ -74,7 +74,7 @@ function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onT
                 <TimeInput
                   value={draftTime}
                   onValueChange={setDraftTime}
-                  className="bg-depth-control min-h-11 w-full rounded-control px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
+                  className="min-h-11 w-full rounded-control bg-canvas-deep px-3 text-sm text-ink outline-none focus:ring-2 focus:ring-accent"
                   autoFocus
                 />
               </label>
@@ -83,7 +83,7 @@ function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onT
                 <input
                   value={draftText}
                   onChange={(event) => setDraftText(event.target.value)}
-                  className="bg-depth-control min-h-11 w-full rounded-control px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
+                  className="min-h-11 w-full rounded-control bg-canvas-deep px-3 text-sm text-ink outline-none focus:ring-2 focus:ring-accent"
                 />
               </label>
               <ParentSelect
@@ -92,18 +92,28 @@ function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onT
                 options={staysInCurrentWeek ? priorities : []}
                 label="Wochenpriorität"
                 disabled={!staysInCurrentWeek}
+                flat
               />
             </div>
           ) : (
             <>
               <p className={`text-sm font-semibold leading-relaxed ${task.done ? "text-muted line-through" : "text-ink"}`}>{task.text}</p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold uppercase text-subtle">
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase text-subtle">
                 <span>Lege eine Uhrzeit fest</span>
+                {task.postponedFromDate ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>Aufgeschoben seit {formatDateKey(task.postponedFromDate)}</span>
+                  </>
+                ) : null}
                 {parent ? (
-                  <button type="button" onClick={() => onNavigateParent(parent)} className="inline-flex items-center gap-1.5 transition hover:text-ink">
-                    <Link2 className="h-3.5 w-3.5 text-accent" />
-                    {parent.text}
-                  </button>
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <button type="button" onClick={() => onNavigateParent(parent)} className="inline-flex items-center gap-1.5 transition hover:text-ink">
+                      <Link2 className="h-3.5 w-3.5 text-accent" />
+                      {parent.text}
+                    </button>
+                  </>
                 ) : null}
               </div>
             </>

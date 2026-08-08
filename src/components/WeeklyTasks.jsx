@@ -1,22 +1,13 @@
 import { Check, ChevronRight } from "lucide-react";
+import { formatDateKey } from "../utils/date.js";
 
 const dayFormatter = new Intl.DateTimeFormat("de-DE", {
   weekday: "short",
   day: "2-digit",
   month: "2-digit",
 });
-const originDateFormatter = new Intl.DateTimeFormat("de-DE", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
 function taskDay(dateKey) {
   return dayFormatter.format(new Date(`${dateKey}T12:00:00`));
-}
-
-function originDate(dateKey) {
-  return originDateFormatter.format(new Date(`${dateKey}T12:00:00`));
 }
 
 export function WeeklyTaskRow({ task, onToggle, onNavigate }) {
@@ -47,7 +38,7 @@ export function WeeklyTaskRow({ task, onToggle, onNavigate }) {
               {taskDay(task.dateKey)} · {task.time || "Ohne Uhrzeit"}
               {task.postponedFromDate ? (
                 <span className="ml-2">
-                  · Aufgeschoben seit {originDate(task.postponedFromDate)}
+                  · Aufgeschoben seit {formatDateKey(task.postponedFromDate)}
                 </span>
               ) : null}
             </span>

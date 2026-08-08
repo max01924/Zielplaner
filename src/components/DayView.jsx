@@ -104,7 +104,7 @@ export default function DayView({ selectedDate, onDateChange, tasks, priorities,
             <TimeInput
               value={time}
               onValueChange={setTime}
-              className="bg-depth-control min-h-12 w-full rounded-control px-4 text-sm text-ink shadow-inset outline-none transition focus:ring-2 focus:ring-accent"
+              className="min-h-12 w-full rounded-control bg-canvas-deep px-4 text-sm text-ink outline-none transition focus:ring-2 focus:ring-accent"
             />
           </label>
           <label>
@@ -113,10 +113,10 @@ export default function DayView({ selectedDate, onDateChange, tasks, priorities,
               value={text}
               onChange={(event) => setText(event.target.value)}
               placeholder="z.B. GUI fertig"
-              className="bg-depth-control min-h-12 w-full rounded-control px-4 text-sm text-ink shadow-inset outline-none transition placeholder:text-subtle focus:ring-2 focus:ring-accent"
+              className="min-h-12 w-full rounded-control bg-canvas-deep px-4 text-sm text-ink outline-none transition placeholder:text-subtle focus:ring-2 focus:ring-accent"
             />
           </label>
-          <ParentSelect value={weeklyPriorityId} onChange={setWeeklyPriorityId} options={priorities} label="Wochenpriorität" />
+          <ParentSelect value={weeklyPriorityId} onChange={setWeeklyPriorityId} options={priorities} label="Wochenpriorität" flat />
           <button
             type="submit"
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-control bg-accent px-5 text-sm font-black text-accent-contrast shadow-inset transition hover:brightness-110"

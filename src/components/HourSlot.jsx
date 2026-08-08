@@ -1,6 +1,6 @@
 import { Check, Link2, Pencil, Save, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
-import { isoWeekKeyFromDateKey } from "../utils/date.js";
+import { formatDateKey, isoWeekKeyFromDateKey } from "../utils/date.js";
 import ParentSelect from "./ParentSelect.jsx";
 import TimeInput from "./TimeInput.jsx";
 
@@ -65,7 +65,7 @@ export default function HourSlot({ task, priorities, parent, onNavigateParent, o
                         setDraftPriorityId(null);
                       }
                     }}
-                    className="bg-depth-control min-h-10 w-full rounded-xl px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
+                    className="min-h-10 w-full rounded-xl bg-canvas-deep px-3 text-sm text-ink outline-none focus:ring-2 focus:ring-accent"
                   />
                 </label>
                 <label>
@@ -73,7 +73,7 @@ export default function HourSlot({ task, priorities, parent, onNavigateParent, o
                   <TimeInput
                     value={draftTime}
                     onValueChange={setDraftTime}
-                    className="bg-depth-control min-h-10 w-full rounded-xl px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
+                    className="min-h-10 w-full rounded-xl bg-canvas-deep px-3 text-sm text-ink outline-none focus:ring-2 focus:ring-accent"
                   />
                 </label>
                 <label>
@@ -85,7 +85,7 @@ export default function HourSlot({ task, priorities, parent, onNavigateParent, o
                       if (event.key === "Enter") save();
                       if (event.key === "Escape") setIsEditing(false);
                     }}
-                    className="bg-depth-control min-h-10 w-full rounded-xl px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
+                    className="min-h-10 w-full rounded-xl bg-canvas-deep px-3 text-sm text-ink outline-none focus:ring-2 focus:ring-accent"
                     autoFocus
                   />
                 </label>
@@ -96,17 +96,26 @@ export default function HourSlot({ task, priorities, parent, onNavigateParent, o
                     options={staysInCurrentWeek ? priorities : []}
                     label="Wochenpriorität"
                     disabled={!staysInCurrentWeek}
+                    flat
                   />
                 </div>
               </div>
             ) : (
               <>
                 <p className={`text-sm leading-relaxed ${task.done ? "text-subtle line-through" : "font-medium text-ink"}`}>{task.text}</p>
-                {parent ? (
-                  <button type="button" onClick={() => onNavigateParent(parent)} className="mt-2 inline-flex items-center gap-2 text-[10px] font-bold uppercase text-muted hover:text-ink">
-                    <Link2 className="h-3.5 w-3.5 text-accent" />
-                    {parent.text}
-                  </button>
+                {task.postponedFromDate || parent ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold uppercase text-muted">
+                    {task.postponedFromDate ? (
+                      <span>Aufgeschoben seit {formatDateKey(task.postponedFromDate)}</span>
+                    ) : null}
+                    {task.postponedFromDate && parent ? <span aria-hidden="true">·</span> : null}
+                    {parent ? (
+                      <button type="button" onClick={() => onNavigateParent(parent)} className="inline-flex items-center gap-2 hover:text-ink">
+                        <Link2 className="h-3.5 w-3.5 text-accent" />
+                        {parent.text}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </>
             )}

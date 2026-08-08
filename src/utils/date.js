@@ -18,6 +18,11 @@ const shortDayYearFormatter = new Intl.DateTimeFormat("de-DE", {
   month: "short",
   year: "numeric",
 });
+const numericDateFormatter = new Intl.DateTimeFormat("de-DE", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
 
 export function toDateKey(date) {
   const year = date.getFullYear();
@@ -113,6 +118,10 @@ export function formatWeekday(date) {
 
 export function formatFullDate(date) {
   return fullDateFormatter.format(date);
+}
+
+export function formatDateKey(dateKey) {
+  return numericDateFormatter.format(dateFromKey(dateKey));
 }
 
 export function formatMonth(date) {
