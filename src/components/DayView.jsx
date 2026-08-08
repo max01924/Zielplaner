@@ -138,7 +138,7 @@ export default function DayView({ selectedDate, onDateChange, tasks, priorities,
       />
 
       <div>
-        <div className="mb-3 flex items-end justify-between gap-4 pb-2">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-4 pb-2">
           <div>
             <p className="mb-1 text-[11px] font-bold uppercase text-subtle">Ablauf</p>
             <h2 className="text-2xl font-black uppercase text-ink">Tageszeitstrahl</h2>

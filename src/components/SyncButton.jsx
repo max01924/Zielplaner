@@ -29,25 +29,27 @@ export default function SyncButton({ onSynced }) {
   }
 
   return (
-    <div className="flex flex-col items-start gap-1.5 md:items-end md:text-right">
+    <div className="group relative flex shrink-0 items-center">
       <button
         type="button"
         onClick={runSync}
         disabled={isSyncing}
-        className="bg-depth-control inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-4 text-sm font-bold text-ink shadow-inset transition hover:brightness-125 disabled:opacity-60"
+        className="bg-depth-control inline-flex h-9 w-9 items-center justify-center gap-2 rounded-xl text-sm font-bold text-ink shadow-inset transition hover:brightness-125 disabled:opacity-60 sm:h-10 sm:w-10 sm:rounded-control xl:min-h-11 xl:w-auto xl:px-4"
+        aria-label={isSyncing ? "Synchronisierung läuft" : "Synchronisieren"}
+        title={isSyncing ? "Sync läuft" : "Synchronisieren"}
       >
         <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-        {isSyncing ? "Sync läuft" : "Sync"}
+        <span className="hidden xl:inline">{isSyncing ? "Sync läuft" : "Sync"}</span>
       </button>
 
       {lastSyncedAt ? (
-        <p className="max-w-[220px] text-xs font-semibold text-muted">
+        <p className="liquid-glass-popover pointer-events-none absolute right-0 top-[calc(100%+0.75rem)] hidden w-max max-w-[220px] rounded-xl px-3 py-2 text-xs font-semibold text-muted group-hover:block group-focus-within:block">
           Zuletzt synchronisiert: {timeFormatter.format(new Date(lastSyncedAt))}
         </p>
       ) : null}
 
       {error ? (
-        <p className="max-w-[260px] rounded-control bg-accent px-2 py-1 text-xs font-semibold text-accent-contrast shadow-inset">
+        <p className="absolute right-0 top-[calc(100%+0.75rem)] w-[min(260px,calc(100vw-2rem))] rounded-control bg-accent px-3 py-2 text-xs font-semibold text-accent-contrast shadow-card" role="alert">
           {error}
         </p>
       ) : null}

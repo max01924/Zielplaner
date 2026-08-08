@@ -3,8 +3,8 @@ import { api } from "./api.js";
 import DayView from "./components/DayView.jsx";
 import HabitsView from "./components/HabitsView.jsx";
 import MonthlyView from "./components/MonthlyView.jsx";
+import AppNavigation from "./components/AppNavigation.jsx";
 import SettingsDialog from "./components/SettingsDialog.jsx";
-import SyncButton from "./components/SyncButton.jsx";
 import TabNav from "./components/TabNav.jsx";
 import WeeklyView from "./components/WeeklyView.jsx";
 import YearlyView from "./components/YearlyView.jsx";
@@ -19,12 +19,6 @@ import { canFillDailyReview, pendingDailyReviewDate } from "./utils/dailyReview.
 import { canFillWeeklyReview, pendingWeeklyReviewWeek } from "./utils/weeklyReview.js";
 import { reviewForPeriod } from "./utils/reviewQuestions.js";
 import { applyAppearance, applyBackgroundImage, loadSettings, normalizeSettings, storeSettings } from "./utils/settings.js";
-import { MessageSquareText, Repeat2, Settings, Target } from "lucide-react";
-
-const modes = [
-  { id: "goals", label: "Zielplaner", Icon: Target },
-  { id: "habits", label: "Habits", Icon: Repeat2 },
-];
 
 const tabs = [
   { id: "daily", label: "Täglich", shortLabel: "Tag" },
@@ -108,32 +102,6 @@ function createGoalHandlers(period, setGoals, runMutation, refreshState, onCreat
       });
     },
   };
-}
-
-function ModeToggle({ activeMode, onChange }) {
-  return (
-    <div className="bg-depth-inset grid w-full max-w-[390px] grid-cols-2 gap-1 rounded-panel p-1 shadow-inset">
-      {modes.map(({ id, label, Icon }) => {
-        const isActive = activeMode === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onChange(id)}
-            className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-[24px] px-4 text-xs font-black uppercase transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink/70 sm:text-sm ${
-              isActive
-                ? "bg-accent text-accent-contrast shadow-inset"
-                : "text-muted hover:bg-surface-hover hover:text-ink"
-            }`}
-            aria-pressed={isActive}
-          >
-            <Icon className={`h-5 w-5 ${isActive ? "text-ink" : ""}`} />
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 export default function App() {
@@ -679,70 +647,31 @@ export default function App() {
   return (
     <>
       <div className="custom-background-layer" aria-hidden="true" />
-      <main className="relative z-10 min-h-screen px-4 py-5 text-ink sm:px-6 sm:py-7 lg:px-10 lg:py-8">
+      <AppNavigation
+        activeMode={activeMode}
+        onModeChange={setActiveMode}
+        onOpenSettings={() => setSettingsOpen(true)}
+        pendingDailyReview={!isLoading && Boolean(pendingReviewDate)}
+        pendingWeeklyReview={!isLoading && Boolean(pendingWeeklyReviewKey)}
+        onOpenDailyReview={openPendingDailyReview}
+        onOpenWeeklyReview={openPendingWeeklyReview}
+        onSynced={loadState}
+      />
+      <main className="relative z-10 min-h-screen px-4 pb-5 pt-24 text-ink sm:px-6 sm:pb-7 sm:pt-[112px] lg:px-10 lg:pb-8">
         <div className="mx-auto w-full max-w-7xl">
-        <header className="mb-10">
-          <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center">
-            <div className="flex items-center gap-3 lg:justify-self-start">
-              <button
-                type="button"
-                onClick={() => setSettingsOpen(true)}
-                className="bg-depth-inset grid h-10 w-10 shrink-0 place-items-center rounded-control text-muted shadow-inset transition hover:text-ink hover:brightness-125"
-                aria-label="Einstellungen öffnen"
-                title="Einstellungen"
-              >
-                <Settings className="h-5 w-5" />
-              </button>
-              <div className="flex items-center gap-3" aria-label="Zielplaner">
-                <span className="h-10 w-1 rounded-full bg-accent shadow-[0_0_24px_rgb(var(--color-accent-rgb)/0.35)]" />
-                <div>
-                  <p className="text-sm font-black uppercase text-ink">Zielplaner</p>
-                  <p className="mt-0.5 text-[10px] font-semibold uppercase text-subtle">Planungssystem</p>
-                </div>
+          <header className={activeMode === "goals" || error ? "mb-10" : ""}>
+            {activeMode === "goals" ? (
+              <div className="flex justify-start lg:justify-center">
+                <TabNav activeTab={activeTab} tabs={tabs} onChange={changePlanningTab} />
               </div>
-            </div>
+            ) : null}
 
-            <div className="flex justify-start lg:justify-center">
-              <ModeToggle activeMode={activeMode} onChange={setActiveMode} />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-start gap-2 md:justify-end lg:justify-self-end">
-              {!isLoading && pendingReviewDate ? (
-                <button
-                  type="button"
-                  onClick={openPendingDailyReview}
-                  className="daily-review-notice inline-flex min-h-11 max-w-[240px] items-center gap-2 rounded-control px-4 text-left text-xs font-black text-ink transition hover:brightness-125"
-                >
-                  <MessageSquareText className="h-4 w-4 shrink-0 text-accent" />
-                  Tagesreview kann ausgefüllt werden
-                </button>
-              ) : null}
-              {!isLoading && pendingWeeklyReviewKey ? (
-                <button
-                  type="button"
-                  onClick={openPendingWeeklyReview}
-                  className="daily-review-notice inline-flex min-h-11 max-w-[240px] items-center gap-2 rounded-control px-4 text-left text-xs font-black text-ink transition hover:brightness-125"
-                >
-                  <MessageSquareText className="h-4 w-4 shrink-0 text-accent" />
-                  Wochenreview kann ausgefüllt werden
-                </button>
-              ) : null}
-              <SyncButton onSynced={loadState} />
-            </div>
-          </div>
-
-          {activeMode === "goals" ? (
-            <div className="mt-6 flex justify-start lg:justify-center">
-              <TabNav activeTab={activeTab} tabs={tabs} onChange={changePlanningTab} />
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="mt-5 max-w-xl rounded-control bg-accent px-4 py-3 text-sm font-semibold text-accent-contrast shadow-card">
-              {error}
-            </div>
-          ) : null}
-        </header>
+            {error ? (
+              <div className="mt-5 max-w-xl rounded-control bg-accent px-4 py-3 text-sm font-semibold text-accent-contrast shadow-card">
+                {error}
+              </div>
+            ) : null}
+          </header>
 
         {isLoading ? (
           <div className="bg-depth-panel rounded-panel p-10 text-center text-sm font-semibold text-muted shadow-card">
@@ -820,16 +749,16 @@ export default function App() {
           />
         ) : null}
 
-        {settingsOpen ? (
-          <SettingsDialog
-            settings={settings}
-            backgroundImageUrl={backgroundImageUrl}
-            onSave={saveSettings}
-            onClose={() => setSettingsOpen(false)}
-          />
-        ) : null}
         </div>
       </main>
+      {settingsOpen ? (
+        <SettingsDialog
+          settings={settings}
+          backgroundImageUrl={backgroundImageUrl}
+          onSave={saveSettings}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
     </>
   );
 }

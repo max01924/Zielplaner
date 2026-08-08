@@ -26,6 +26,10 @@
   --color-line-rgb: 242 242 240;
   --color-highlight-rgb: 242 242 240;
   --color-shadow-rgb: 0 0 0;
+  --glass-fill-rgb: 24 24 26;
+  --glass-fill-alpha: 0.42;
+  --glass-highlight-rgb: 255 255 255;
+  --glass-shadow-rgb: 0 0 0;
   --custom-background-blur: 0px;
   --custom-background-overlay: linear-gradient(
     160deg,
@@ -62,6 +66,10 @@
   --color-line-rgb: 21 21 23;
   --color-highlight-rgb: 255 255 255;
   --color-shadow-rgb: 58 58 64;
+  --glass-fill-rgb: 242 242 244;
+  --glass-fill-alpha: 0.38;
+  --glass-highlight-rgb: 255 255 255;
+  --glass-shadow-rgb: 58 58 64;
   --custom-background-overlay: linear-gradient(
     160deg,
     rgb(var(--color-bg-from-rgb) / 0.56) 0%,
@@ -80,14 +88,14 @@
 }
 
 html {
-  min-width: 320px;
+  min-width: 0;
   min-height: 100%;
   background: var(--color-bg-to);
 }
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 0;
   min-height: 100vh;
   background-color: var(--color-bg-to);
   background-image: radial-gradient(
@@ -252,6 +260,108 @@ select:focus-visible {
     var(--color-bg-to) 8%,
     var(--color-bg-via) 170%
   );
+}
+
+.liquid-glass-nav,
+.liquid-glass-popover {
+  position: relative;
+  isolation: isolate;
+  background-color: rgb(var(--glass-fill-rgb) / var(--glass-fill-alpha));
+  background-image:
+    radial-gradient(
+      120% 180% at 6% -45%,
+      rgb(var(--glass-highlight-rgb) / 0.24) 0%,
+      rgb(var(--glass-highlight-rgb) / 0.08) 32%,
+      transparent 62%
+    ),
+    linear-gradient(
+      145deg,
+      rgb(var(--color-bg-from-rgb) / 0.2) 0%,
+      rgb(var(--glass-fill-rgb) / 0.22) 52%,
+      rgb(var(--color-bg-to-rgb) / 0.38) 100%
+    );
+  box-shadow:
+    inset 1px 1px 0 rgb(var(--glass-highlight-rgb) / 0.25),
+    inset -1px -1px 0 rgb(var(--glass-shadow-rgb) / 0.22),
+    inset 0 -12px 30px rgb(var(--glass-shadow-rgb) / 0.08),
+    0 18px 45px rgb(var(--glass-shadow-rgb) / 0.24);
+  -webkit-backdrop-filter: blur(32px) saturate(165%) contrast(108%);
+  backdrop-filter: blur(32px) saturate(165%) contrast(108%);
+}
+
+.liquid-glass-nav::before,
+.liquid-glass-popover::before {
+  position: absolute;
+  z-index: 0;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    120deg,
+    rgb(var(--glass-highlight-rgb) / 0.08),
+    transparent 34%,
+    rgb(var(--glass-highlight-rgb) / 0.025) 72%,
+    transparent
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.liquid-glass-nav::after,
+.liquid-glass-popover::after {
+  position: absolute;
+  z-index: 0;
+  inset: 2px;
+  border-radius: inherit;
+  background:
+    radial-gradient(75% 160% at 16% -20%, rgb(var(--glass-highlight-rgb) / 0.14), transparent 58%),
+    radial-gradient(65% 135% at 88% 125%, rgb(var(--glass-shadow-rgb) / 0.12), transparent 64%);
+  -webkit-backdrop-filter: blur(7px) saturate(125%);
+  backdrop-filter: blur(7px) saturate(125%);
+  content: "";
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(115deg, #000 0%, transparent 38%, transparent 68%, #000 100%);
+  mask-image: linear-gradient(115deg, #000 0%, transparent 38%, transparent 68%, #000 100%);
+}
+
+.liquid-glass-nav > *,
+.liquid-glass-popover > * {
+  position: relative;
+  z-index: 1;
+}
+
+.liquid-glass-popover {
+  z-index: 50;
+  background-color: rgb(var(--glass-fill-rgb) / 0.66);
+  box-shadow:
+    inset 1px 1px 0 rgb(var(--glass-highlight-rgb) / 0.22),
+    inset -1px -1px 0 rgb(var(--glass-shadow-rgb) / 0.2),
+    0 16px 38px rgb(var(--glass-shadow-rgb) / 0.28);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .liquid-glass-nav,
+  .liquid-glass-popover {
+    background-color: rgb(var(--glass-fill-rgb) / 0.94);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .liquid-glass-nav,
+  .liquid-glass-popover {
+    background-color: rgb(var(--glass-fill-rgb) / 0.94);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-nav *,
+  .liquid-glass-popover * {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 .daily-focus-glow::before {

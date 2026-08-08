@@ -262,7 +262,7 @@ export default function ReviewPanel({
   if (flat) {
     const showOpenFrame = !isComplete && (!canEdit || !hideFrameWhenEditable);
     return (
-      <section id={id} className="scroll-mt-6">
+      <section id={id} className="scroll-mt-28 sm:scroll-mt-32">
         {header}
         <div className={`rounded-panel ${showOpenFrame
           ? (canEdit ? "flat-dashed-frame review-dashed-frame p-7 sm:p-8" : "flat-dashed-frame review-dashed-frame flex min-h-44 items-center justify-center p-10 sm:min-h-48 sm:p-12")
@@ -277,7 +277,7 @@ export default function ReviewPanel({
   return (
     <section
       id={id}
-      className={`scroll-mt-6 rounded-panel p-7 sm:p-8 ${isComplete ? "bg-depth-panel shadow-card" : "empty-depth-frame"}`}
+      className={`scroll-mt-28 rounded-panel p-7 sm:scroll-mt-32 sm:p-8 ${isComplete ? "bg-depth-panel shadow-card" : "empty-depth-frame"}`}
     >
       {header}
       {content}
