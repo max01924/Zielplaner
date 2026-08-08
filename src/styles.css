@@ -289,6 +289,21 @@ select:focus-visible {
   box-shadow: none;
 }
 
+.review-dashed-frame {
+  position: relative;
+  border-color: transparent;
+}
+
+.review-dashed-frame::after {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  border: 2px dashed rgb(var(--color-line-rgb) / 0.38);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
 .daily-review-notice {
   background-color: rgb(var(--color-bg-to-rgb) / 0.88);
   background-image: radial-gradient(

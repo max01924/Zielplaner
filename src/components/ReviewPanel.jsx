@@ -46,6 +46,7 @@ export default function ReviewPanel({
   allowReopen = false,
   stackedQuestions = false,
   autoGrowAnswers = false,
+  hideFrameWhenEditable = false,
 }) {
   const [questions, setQuestions] = useState(review?.questions ?? defaultQuestions);
   const [newQuestion, setNewQuestion] = useState("");
@@ -259,12 +260,13 @@ export default function ReviewPanel({
   );
 
   if (flat) {
+    const showOpenFrame = !isComplete && (!canEdit || !hideFrameWhenEditable);
     return (
       <section id={id} className="scroll-mt-6">
         {header}
-        <div className={`rounded-panel ${isComplete
-          ? "p-7 sm:p-8"
-          : (canEdit ? "flat-dashed-frame p-7 sm:p-8" : "flat-dashed-frame flex min-h-44 items-center justify-center p-10 sm:min-h-48 sm:p-12")
+        <div className={`rounded-panel ${showOpenFrame
+          ? (canEdit ? "flat-dashed-frame review-dashed-frame p-7 sm:p-8" : "flat-dashed-frame review-dashed-frame flex min-h-44 items-center justify-center p-10 sm:min-h-48 sm:p-12")
+          : "p-7 sm:p-8"
         }`}>
           {content}
         </div>
