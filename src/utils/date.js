@@ -40,6 +40,12 @@ export function startOfIsoWeek(date) {
   return start;
 }
 
+export function isoWeekKeyFromDateKey(dateKey) {
+  const date = dateFromKey(dateKey);
+  if (Number.isNaN(date.getTime())) return null;
+  return toDateKey(startOfIsoWeek(date));
+}
+
 export function addWeeks(date, amount) {
   return addDays(startOfIsoWeek(date), amount * 7);
 }

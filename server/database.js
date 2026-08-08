@@ -2354,7 +2354,10 @@ export function updateDailyTask(id, patch) {
     return null;
   }
 
+  const dateKey = hasOwn(patch, "dateKey") ? patch.dateKey : current.date_key;
+  const keepsCurrentWeek = startOfIsoWeekKey(dateKey) === startOfIsoWeekKey(current.date_key);
   const next = {
+    dateKey,
     time: patch.time ?? current.time,
     text: patch.text ?? current.text,
     done: typeof patch.done === "boolean" ? patch.done : Boolean(current.done),
@@ -2362,20 +2365,24 @@ export function updateDailyTask(id, patch) {
       ? patch.isDailyFocus
       : Boolean(current.is_daily_focus),
     weeklyPriorityId: hasOwn(patch, "weeklyPriorityId")
-      ? validateTaskParent(current.date_key, patch.weeklyPriorityId)
-      : current.weekly_priority_id,
+      ? validateTaskParent(dateKey, patch.weeklyPriorityId)
+      : (keepsCurrentWeek ? current.weekly_priority_id : null),
+    postponedFromDate: current.postponed_from_date,
   };
 
   db.prepare(`
     UPDATE daily_tasks
-    SET time = ?, text = ?, done = ?, is_daily_focus = ?, weekly_priority_id = ?, updated_at = ?
+    SET date_key = ?, time = ?, text = ?, done = ?, is_daily_focus = ?, weekly_priority_id = ?,
+      postponed_from_date = ?, updated_at = ?
     WHERE id = ?
   `).run(
+    next.dateKey,
     next.time,
     next.text,
     next.done ? 1 : 0,
     next.isDailyFocus ? 1 : 0,
     next.weeklyPriorityId,
+    next.postponedFromDate,
     nowIso(),
     id
   );

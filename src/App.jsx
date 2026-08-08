@@ -342,16 +342,29 @@ export default function App() {
     onUpdateTask(taskId, updatedTask) {
       return runMutation(async () => {
         const savedTask = await api.updateDailyTask(taskId, {
+          dateKey: updatedTask.dateKey,
           time: updatedTask.time,
           text: updatedTask.text,
           weeklyPriorityId: updatedTask.weeklyPriorityId,
         });
-        setDailyTasks((current) => ({
-          ...current,
-          [selectedDateKey]: (current[selectedDateKey] ?? []).map((task) =>
-            task.id === taskId ? savedTask : task
-          ),
-        }));
+        setDailyTasks((current) => {
+          const sourceDateKey = Object.keys(current).find((dateKey) =>
+            (current[dateKey] ?? []).some((task) => task.id === taskId)
+          ) ?? selectedDateKey;
+          const next = {
+            ...current,
+            [sourceDateKey]: (current[sourceDateKey] ?? []).filter((task) => task.id !== taskId),
+          };
+          const targetTasks = savedTask.dateKey === sourceDateKey
+            ? next[sourceDateKey]
+            : (current[savedTask.dateKey] ?? []);
+          next[savedTask.dateKey] = [
+            ...targetTasks.filter((task) => task.id !== taskId),
+            savedTask,
+          ];
+          return next;
+        });
+        return true;
       });
     },
     onDeleteTask(taskId) {

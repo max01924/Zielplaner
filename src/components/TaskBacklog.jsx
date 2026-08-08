@@ -1,26 +1,36 @@
 import { Check, Inbox, Link2, Pencil, Save, Star, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import { isoWeekKeyFromDateKey } from "../utils/date.js";
 import ParentSelect from "./ParentSelect.jsx";
 import TimeInput from "./TimeInput.jsx";
 
 function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onToggleFocus, onUpdate, onDelete }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [draftDateKey, setDraftDateKey] = useState(task.dateKey);
   const [draftTime, setDraftTime] = useState("");
   const [draftText, setDraftText] = useState(task.text);
   const [draftPriorityId, setDraftPriorityId] = useState(task.weeklyPriorityId);
+  const staysInCurrentWeek = isoWeekKeyFromDateKey(draftDateKey) === isoWeekKeyFromDateKey(task.dateKey);
 
   function cancel() {
+    setDraftDateKey(task.dateKey);
     setDraftTime("");
     setDraftText(task.text);
     setDraftPriorityId(task.weeklyPriorityId);
     setIsEditing(false);
   }
 
-  function save() {
+  async function save() {
     const text = draftText.trim();
     if (!text) return;
-    onUpdate({ ...task, time: draftTime, text, weeklyPriorityId: draftPriorityId });
-    setIsEditing(false);
+    const saved = await onUpdate({
+      ...task,
+      dateKey: draftDateKey,
+      time: draftTime,
+      text,
+      weeklyPriorityId: staysInCurrentWeek ? draftPriorityId : null,
+    });
+    if (saved !== false) setIsEditing(false);
   }
 
   return (
@@ -44,7 +54,21 @@ function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onT
 
         <div className="min-w-0 flex-1">
           {isEditing ? (
-            <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)_minmax(220px,0.7fr)]">
+            <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-[150px_140px_minmax(0,1fr)_minmax(220px,0.7fr)]">
+              <label>
+                <span className="mb-2 block text-[10px] font-bold uppercase text-subtle">Datum</span>
+                <input
+                  type="date"
+                  value={draftDateKey}
+                  onChange={(event) => {
+                    setDraftDateKey(event.target.value);
+                    if (isoWeekKeyFromDateKey(event.target.value) !== isoWeekKeyFromDateKey(task.dateKey)) {
+                      setDraftPriorityId(null);
+                    }
+                  }}
+                  className="bg-depth-control min-h-11 w-full rounded-control px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
+                />
+              </label>
               <label>
                 <span className="mb-2 block text-[10px] font-bold uppercase text-subtle">Einplanen um</span>
                 <TimeInput
@@ -62,7 +86,13 @@ function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onT
                   className="bg-depth-control min-h-11 w-full rounded-control px-3 text-sm text-ink shadow-inset outline-none focus:ring-2 focus:ring-accent"
                 />
               </label>
-              <ParentSelect value={draftPriorityId} onChange={setDraftPriorityId} options={priorities} label="Wochenpriorität" />
+              <ParentSelect
+                value={draftPriorityId}
+                onChange={setDraftPriorityId}
+                options={staysInCurrentWeek ? priorities : []}
+                label="Wochenpriorität"
+                disabled={!staysInCurrentWeek}
+              />
             </div>
           ) : (
             <>

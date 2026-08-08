@@ -514,6 +514,9 @@ app.post("/api/daily-tasks/carry-over", asyncRoute((request, response) => {
 
 app.patch("/api/daily-tasks/:id", asyncRoute((request, response) => {
   const patch = {};
+  if ("dateKey" in request.body) {
+    patch.dateKey = dateKeyField(request.body.dateKey, "dateKey");
+  }
   if ("time" in request.body) {
     patch.time = optionalTimeField(request.body.time);
   }

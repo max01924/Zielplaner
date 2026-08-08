@@ -429,6 +429,48 @@ test("carries incomplete tasks forward and preserves their original date", () =>
   assert.equal(mondayTasks.find((task) => task.id === sundayTask.id).weeklyPriorityId, null);
 });
 
+test("manual date changes preserve existing postponement without creating one", () => {
+  const manuallyMovedTask = database.createDailyTask({
+    dateKey: "2041-04-01",
+    time: "08:30",
+    text: "Move without postponing",
+  });
+  const manuallyMoved = database.updateDailyTask(manuallyMovedTask.id, { dateKey: "2041-04-02" });
+  assert.equal(manuallyMoved.dateKey, "2041-04-02");
+  assert.equal(manuallyMoved.postponedFromDate, null);
+
+  const priority = database.createWeeklyPriority({
+    weekKey: "2041-05-06",
+    text: "Same-week priority",
+  });
+  const task = database.createDailyTask({
+    dateKey: "2041-05-07",
+    time: "09:30",
+    text: "Move manually",
+    weeklyPriorityId: priority.id,
+  });
+  database.saveDailyReview({
+    dateKey: "2041-05-07",
+    positive: "Done",
+    improvement: "Move the task",
+    complete: true,
+  });
+  const [carriedTask] = database.carryOverIncompleteDailyTasks({
+    fromDateKey: "2041-05-07",
+    toDateKey: "2041-05-08",
+  });
+  assert.equal(carriedTask.postponedFromDate, "2041-05-07");
+
+  const movedWithinWeek = database.updateDailyTask(task.id, { dateKey: "2041-05-09" });
+  assert.equal(movedWithinWeek.dateKey, "2041-05-09");
+  assert.equal(movedWithinWeek.postponedFromDate, "2041-05-07");
+  assert.equal(movedWithinWeek.weeklyPriorityId, priority.id);
+
+  const movedAcrossWeek = database.updateDailyTask(task.id, { dateKey: "2041-05-13" });
+  assert.equal(movedAcrossWeek.postponedFromDate, "2041-05-07");
+  assert.equal(movedAcrossWeek.weeklyPriorityId, null);
+});
+
 test("daily reviews keep drafts, custom questions and completion state in sync", () => {
   const draft = database.saveDailyReview({
     dateKey: "2027-05-11",
