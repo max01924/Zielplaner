@@ -188,7 +188,7 @@ export default function GoalCard({
   }
 
   return (
-    <article className="bg-depth-panel group relative overflow-hidden rounded-panel p-5 text-ink shadow-card transition duration-200 hover:brightness-110 sm:p-6">
+    <article className="render-lazy-card bg-depth-panel group relative overflow-hidden rounded-panel p-5 text-ink shadow-card transition duration-200 hover:brightness-110 sm:p-6">
       <span className="absolute left-6 top-0 h-1 w-14 rounded-b-full bg-accent" aria-hidden="true" />
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">

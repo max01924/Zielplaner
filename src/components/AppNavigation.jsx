@@ -130,8 +130,9 @@ export default function AppNavigation({
 
   return (
     <nav className="fixed inset-x-3 top-3 z-40 sm:inset-x-4 sm:top-4" aria-label="Hauptnavigation">
-      <div className="liquid-glass-nav mx-auto h-16 w-full max-w-[1600px] rounded-[26px] px-2 sm:h-[72px] sm:rounded-panel sm:px-3 lg:px-4">
-        <div className="grid h-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 sm:gap-3">
+      <div className="relative isolate mx-auto h-16 w-full max-w-[1600px] rounded-[26px] px-2 sm:h-[72px] sm:rounded-panel sm:px-3 lg:px-4">
+        <span className="liquid-glass-nav rounded-[26px] sm:rounded-panel" aria-hidden="true" />
+        <div className="relative z-10 grid h-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 sm:gap-3">
           <div className="flex min-w-0 items-center gap-3 justify-self-start">
             <button
               type="button"

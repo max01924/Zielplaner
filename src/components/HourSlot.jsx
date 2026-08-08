@@ -28,7 +28,7 @@ export default function HourSlot({ task, priorities, parent, onNavigateParent, o
   }
 
   return (
-    <li className="relative grid gap-3 border-l border-line pb-4 pl-5 last:pb-0 sm:grid-cols-[72px_1fr] sm:gap-4">
+    <li className="render-lazy-row relative grid gap-3 border-l border-line pb-4 pl-5 last:pb-0 sm:grid-cols-[72px_1fr] sm:gap-4">
       <span className="absolute -left-[5px] top-3 h-2.5 w-2.5 rounded-full bg-accent shadow-card" />
       <time className="pt-1 text-xs font-black uppercase text-ink">{task.time}</time>
       <div className={`bg-depth-panel relative overflow-hidden rounded-2xl p-4 shadow-card transition hover:brightness-110 sm:p-5 ${

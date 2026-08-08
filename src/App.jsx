@@ -646,6 +646,7 @@ export default function App() {
 
   return (
     <>
+      <div className="canvas-background-layer" aria-hidden="true" />
       <div className="custom-background-layer" aria-hidden="true" />
       <AppNavigation
         activeMode={activeMode}

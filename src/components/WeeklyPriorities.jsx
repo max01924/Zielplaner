@@ -24,7 +24,7 @@ function PriorityRow({ priority, parent, parentOptions, linkedTasks, onNavigateP
   }
 
   return (
-    <li className="bg-depth-panel rounded-2xl p-4 shadow-card transition hover:brightness-110 sm:p-5">
+    <li className="render-lazy-row bg-depth-panel rounded-2xl p-4 shadow-card transition hover:brightness-110 sm:p-5">
       <div className="flex items-start gap-3">
         <button
           type="button"

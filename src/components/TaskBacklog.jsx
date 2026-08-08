@@ -34,7 +34,7 @@ function BacklogItem({ task, priorities, parent, onNavigateParent, onToggle, onT
   }
 
   return (
-    <li className={`bg-depth-panel relative overflow-hidden rounded-2xl p-4 shadow-card transition hover:brightness-110 ${
+    <li className={`render-lazy-row bg-depth-panel relative overflow-hidden rounded-2xl p-4 shadow-card transition hover:brightness-110 ${
       task.isDailyFocus ? "daily-focus-glow" : ""
     }`}>
       {task.isDailyFocus ? (

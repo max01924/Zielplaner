@@ -94,7 +94,7 @@ export default function HabitHeatmap({
     return (
       <div className="grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {months.map((date) => (
-          <section key={date.getMonth()}>
+          <section key={date.getMonth()} className="render-lazy-month">
             <h4 className="mb-3 text-xs font-black uppercase text-ink">{monthFormatter.format(date)}</h4>
             <div className="grid grid-cols-7 justify-start gap-1">
               {weekdays.map((weekday) => (
